@@ -90,6 +90,11 @@ const TopUp = () => {
   const [affLink, setAffLink] = useState('');
   const [openTransfer, setOpenTransfer] = useState(false);
   const [transferAmount, setTransferAmount] = useState(0);
+  const [rebateConfig, setRebateConfig] = useState({});
+  const [inviterInfo, setInviterInfo] = useState(null);
+  const [invitees, setInvitees] = useState([]);
+  const [inviteesTotal, setInviteesTotal] = useState(0);
+  const [bindLoading, setBindLoading] = useState(false);
 
   // 账单Modal状态
   const [openHistory, setOpenHistory] = useState(false);
@@ -426,6 +431,17 @@ const TopUp = () => {
           amount_options: data.amount_options || [],
           discount: data.discount || {},
         });
+        setRebateConfig({
+          quotaForInviter: data.quota_for_inviter || 0,
+          quotaForInvitee: data.quota_for_invitee || 0,
+          rebateEnabled: data.inviter_rebate_enabled || false,
+          rebateMode: data.inviter_rebate_mode || 'fixed',
+          rebateRatio: data.inviter_rebate_ratio || 0,
+          rebateFixedQuota: data.inviter_rebate_fixed_quota || 0,
+          subscriptionRatio: data.inviter_rebate_subscription_ratio || 0,
+          subscriptionFixedQuota: data.inviter_rebate_subscription_fixed_quota || 0,
+          minConsume: data.inviter_rebate_min_consume || 0,
+        });
 
         // 处理支付方式
         let payMethods = data.pay_methods || [];
@@ -564,6 +580,46 @@ const TopUp = () => {
     }
   };
 
+  // 获取邀请人信息
+  const getInviterInfo = async () => {
+    try {
+      const res = await API.get('/api/user/inviter');
+      if (res.data.success && res.data.data) {
+        setInviterInfo(res.data.data);
+      }
+    } catch (e) { /* ignore */ }
+  };
+
+  // 绑定邀请人
+  const bindInviter = async (affCode) => {
+    setBindLoading(true);
+    try {
+      const res = await API.post('/api/user/inviter', { aff_code: affCode });
+      if (res.data.success) {
+        showSuccess(t('绑定成功'));
+        getInviterInfo();
+        getUserQuota();
+      } else {
+        showError(res.data.message);
+      }
+    } catch (e) {
+      showError(e.message);
+    } finally {
+      setBindLoading(false);
+    }
+  };
+
+  // 获取邀请列表
+  const getInvitees = async (page = 1) => {
+    try {
+      const res = await API.get(`/api/user/invitees?p=${page}&page_size=10`);
+      if (res.data.success) {
+        setInvitees(res.data.data?.items || []);
+        setInviteesTotal(res.data.data?.total || 0);
+      }
+    } catch (e) { /* ignore */ }
+  };
+
   // 复制邀请链接
   const handleAffLinkClick = async () => {
     await copy(affLink);
@@ -589,6 +645,8 @@ const TopUp = () => {
     if (affFetchedRef.current) return;
     affFetchedRef.current = true;
     getAffLink().then();
+    getInviterInfo().then();
+    getInvitees().then();
   }, []);
 
   // 在 statusState 可用时获取充值信息
@@ -834,6 +892,13 @@ const TopUp = () => {
           setOpenTransfer={setOpenTransfer}
           affLink={affLink}
           handleAffLinkClick={handleAffLinkClick}
+          inviterInfo={inviterInfo}
+          onBindInviter={bindInviter}
+          bindLoading={bindLoading}
+          invitees={invitees}
+          inviteesTotal={inviteesTotal}
+          onInviteesPageChange={getInvitees}
+          rebateConfig={rebateConfig}
         />
       </div>
     </div>

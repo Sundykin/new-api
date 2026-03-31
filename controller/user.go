@@ -365,6 +365,86 @@ func GetAffCode(c *gin.Context) {
 	return
 }
 
+func GetInviter(c *gin.Context) {
+	id := c.GetInt("id")
+	user, err := model.GetUserById(id, false)
+	if err != nil {
+		common.ApiError(c, err)
+		return
+	}
+	var data interface{}
+	if user.InviterId > 0 {
+		data, _ = model.GetInviterBasicInfo(user.InviterId)
+	}
+	c.JSON(http.StatusOK, gin.H{
+		"success": true,
+		"message": "",
+		"data":    data,
+	})
+}
+
+func BindInviter(c *gin.Context) {
+	id := c.GetInt("id")
+	var req struct {
+		AffCode string `json:"aff_code"`
+	}
+	if err := common.DecodeJson(c.Request.Body, &req); err != nil || req.AffCode == "" {
+		common.ApiErrorI18n(c, i18n.MsgInvalidParams)
+		return
+	}
+	inviterId, err := model.GetUserIdByAffCode(req.AffCode)
+	if err != nil || inviterId <= 0 {
+		common.ApiErrorMsg(c, "无效的邀请码")
+		return
+	}
+	if inviterId == id {
+		common.ApiErrorMsg(c, "不能邀请自己")
+		return
+	}
+	if err := model.BindInviter(id, inviterId); err != nil {
+		common.ApiErrorMsg(c, err.Error())
+		return
+	}
+	// Give inviter and invitee rewards
+	if common.QuotaForInvitee > 0 {
+		_ = model.IncreaseUserQuota(id, common.QuotaForInvitee, true)
+		model.RecordLog(id, model.LogTypeSystem, fmt.Sprintf("绑定邀请码赠送 %s", logger.LogQuota(common.QuotaForInvitee)))
+	}
+	if common.QuotaForInviter > 0 {
+		model.RecordLog(inviterId, model.LogTypeSystem, fmt.Sprintf("邀请用户赠送 %s", logger.LogQuota(common.QuotaForInviter)))
+		_ = model.InviteUser(inviterId)
+	}
+	c.JSON(http.StatusOK, gin.H{
+		"success": true,
+		"message": "绑定成功",
+	})
+}
+
+func GetInvitees(c *gin.Context) {
+	id := c.GetInt("id")
+	page, _ := strconv.Atoi(c.DefaultQuery("p", "1"))
+	pageSize, _ := strconv.Atoi(c.DefaultQuery("page_size", "10"))
+	if page < 1 {
+		page = 1
+	}
+	if pageSize < 1 || pageSize > 100 {
+		pageSize = 10
+	}
+	items, total, err := model.GetInviteesByInviterId(id, page, pageSize)
+	if err != nil {
+		common.ApiError(c, err)
+		return
+	}
+	c.JSON(http.StatusOK, gin.H{
+		"success": true,
+		"message": "",
+		"data": gin.H{
+			"items": items,
+			"total": total,
+		},
+	})
+}
+
 func GetSelf(c *gin.Context) {
 	id := c.GetInt("id")
 	userRole := c.GetInt("role")
@@ -601,6 +681,43 @@ func UpdateUser(c *gin.Context) {
 		"message": "",
 	})
 	return
+}
+
+func AdminUpdateInviter(c *gin.Context) {
+	id, err := strconv.Atoi(c.Param("id"))
+	if err != nil || id == 0 {
+		common.ApiErrorI18n(c, i18n.MsgInvalidParams)
+		return
+	}
+	var req struct {
+		InviterId int `json:"inviter_id"`
+	}
+	if err := common.DecodeJson(c.Request.Body, &req); err != nil {
+		common.ApiErrorI18n(c, i18n.MsgInvalidParams)
+		return
+	}
+	if req.InviterId == id {
+		common.ApiErrorMsg(c, "邀请人不能是用户自己")
+		return
+	}
+	user, err := model.GetUserById(id, false)
+	if err != nil {
+		common.ApiError(c, err)
+		return
+	}
+	myRole := c.GetInt("role")
+	if myRole <= user.Role && myRole != common.RoleRootUser {
+		common.ApiErrorI18n(c, i18n.MsgUserNoPermissionHigherLevel)
+		return
+	}
+	if err := model.DB.Model(&model.User{}).Where("id = ?", id).Update("inviter_id", req.InviterId).Error; err != nil {
+		common.ApiError(c, err)
+		return
+	}
+	c.JSON(http.StatusOK, gin.H{
+		"success": true,
+		"message": "",
+	})
 }
 
 func AdminClearUserBinding(c *gin.Context) {

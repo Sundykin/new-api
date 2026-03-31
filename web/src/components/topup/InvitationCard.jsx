@@ -17,7 +17,7 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 For commercial licensing, please contact support@quantumnous.com
 */
 
-import React from 'react';
+import React, { useState } from 'react';
 import {
   Avatar,
   Typography,
@@ -26,8 +26,21 @@ import {
   Input,
   Badge,
   Space,
+  Table,
+  Pagination,
+  Tag,
 } from '@douyinfe/semi-ui';
-import { Copy, Users, BarChart2, TrendingUp, Gift, Zap } from 'lucide-react';
+import {
+  Copy,
+  Users,
+  BarChart2,
+  TrendingUp,
+  Gift,
+  Zap,
+  UserPlus,
+  UserCheck,
+  List,
+} from 'lucide-react';
 
 const { Text } = Typography;
 
@@ -38,7 +51,19 @@ const InvitationCard = ({
   setOpenTransfer,
   affLink,
   handleAffLinkClick,
+  inviterInfo,
+  onBindInviter,
+  bindLoading,
+  invitees,
+  inviteesTotal,
+  onInviteesPageChange,
+  rebateConfig,
 }) => {
+  const rc = rebateConfig || {};
+  const [bindCode, setBindCode] = useState('');
+  const hasInviter =
+    userState?.user?.inviter_id > 0 || inviterInfo != null;
+
   return (
     <Card className='!rounded-2xl shadow-sm border-0'>
       {/* 卡片头部 */}
@@ -193,30 +218,181 @@ const InvitationCard = ({
           />
         </Card>
 
-        {/* 奖励说明 */}
-        <Card
-          className='!rounded-xl w-full'
-          title={<Text type='tertiary'>{t('奖励说明')}</Text>}
-        >
-          <div className='space-y-3'>
-            <div className='flex items-start gap-2'>
-              <Badge dot type='success' />
-              <Text type='tertiary' className='text-sm'>
-                {t('邀请好友注册，好友充值后您可获得相应奖励')}
-              </Text>
+        {/* 我的邀请人 */}
+        <Card className='!rounded-xl w-full'>
+          <div className='flex items-center mb-3'>
+            <UserCheck size={16} className='mr-2 text-blue-500' />
+            <Text strong>{t('我的邀请人')}</Text>
+          </div>
+          {hasInviter ? (
+            <div className='flex items-center gap-2'>
+              <Tag color='blue' size='large'>
+                {inviterInfo?.display_name || inviterInfo?.username || `ID: ${userState?.user?.inviter_id}`}
+              </Tag>
             </div>
+          ) : (
+            <div className='flex items-center gap-2'>
+              <Input
+                placeholder={t('请输入邀请码')}
+                value={bindCode}
+                onChange={setBindCode}
+                className='!rounded-lg'
+                style={{ flex: 1 }}
+              />
+              <Button
+                type='primary'
+                theme='solid'
+                loading={bindLoading}
+                disabled={!bindCode}
+                onClick={() => {
+                  onBindInviter(bindCode);
+                  setBindCode('');
+                }}
+                icon={<UserPlus size={14} />}
+                className='!rounded-lg'
+              >
+                {t('绑定')}
+              </Button>
+            </div>
+          )}
+        </Card>
 
+        {/* 邀请列表 */}
+        {inviteesTotal > 0 && (
+          <Card className='!rounded-xl w-full'>
+            <div className='flex items-center justify-between mb-3'>
+              <div className='flex items-center'>
+                <List size={16} className='mr-2 text-green-500' />
+                <Text strong>{t('我邀请的用户')}</Text>
+              </div>
+              <Tag color='green'>{inviteesTotal} {t('人')}</Tag>
+            </div>
+            <div className='space-y-2'>
+              {invitees.map((item) => (
+                <div
+                  key={item.id}
+                  className='flex items-center justify-between py-1 px-2 rounded-lg'
+                  style={{ background: 'var(--semi-color-fill-0)' }}
+                >
+                  <Text size='small'>
+                    {item.display_name || item.username}
+                  </Text>
+                  <Text size='small' type='tertiary'>
+                    ID: {item.id}
+                  </Text>
+                </div>
+              ))}
+            </div>
+            {inviteesTotal > 10 && (
+              <div className='flex justify-center mt-3'>
+                <Pagination
+                  total={inviteesTotal}
+                  pageSize={10}
+                  onChange={onInviteesPageChange}
+                  size='small'
+                />
+              </div>
+            )}
+          </Card>
+        )}
+
+        {/* 奖励说明 */}
+        <Card className='!rounded-xl w-full'>
+          <div className='flex items-center mb-3'>
+            <Gift size={16} className='mr-2 text-amber-500' />
+            <Text strong>{t('奖励说明')}</Text>
+          </div>
+          <div className='space-y-3'>
+            {rc.quotaForInviter > 0 && (
+              <div className='flex items-start gap-2'>
+                <Badge dot type='success' />
+                <Text className='text-sm'>
+                  {t('每成功邀请一位好友注册，您将获得')}{' '}
+                  <Text strong type='success'>{renderQuota(rc.quotaForInviter)}</Text>{' '}
+                  {t('奖励')}
+                </Text>
+              </div>
+            )}
+            {rc.quotaForInvitee > 0 && (
+              <div className='flex items-start gap-2'>
+                <Badge dot type='success' />
+                <Text className='text-sm'>
+                  {t('新用户通过邀请码注册可获得')}{' '}
+                  <Text strong type='success'>{renderQuota(rc.quotaForInvitee)}</Text>{' '}
+                  {t('额度奖励')}
+                </Text>
+              </div>
+            )}
+            {rc.rebateEnabled && (
+              <>
+                {rc.rebateMode === 'ratio' ? (
+                  <>
+                    {rc.rebateRatio > 0 && (
+                      <div className='flex items-start gap-2'>
+                        <Badge dot type='warning' />
+                        <Text className='text-sm'>
+                          {t('好友每次充值，您可获得充值额度的')}{' '}
+                          <Text strong type='warning'>{(rc.rebateRatio * 100).toFixed(0)}%</Text>{' '}
+                          {t('作为返利奖励')}
+                        </Text>
+                      </div>
+                    )}
+                    {rc.subscriptionRatio > 0 && (
+                      <div className='flex items-start gap-2'>
+                        <Badge dot type='warning' />
+                        <Text className='text-sm'>
+                          {t('好友购买订阅套餐，您可获得套餐额度的')}{' '}
+                          <Text strong type='warning'>{(rc.subscriptionRatio * 100).toFixed(0)}%</Text>{' '}
+                          {t('作为返利奖励')}
+                        </Text>
+                      </div>
+                    )}
+                  </>
+                ) : (
+                  <>
+                    {rc.rebateFixedQuota > 0 && (
+                      <div className='flex items-start gap-2'>
+                        <Badge dot type='warning' />
+                        <Text className='text-sm'>
+                          {t('好友每次充值，您可获得')}{' '}
+                          <Text strong type='warning'>{renderQuota(rc.rebateFixedQuota)}</Text>{' '}
+                          {t('固定返利')}
+                        </Text>
+                      </div>
+                    )}
+                    {rc.subscriptionFixedQuota > 0 && (
+                      <div className='flex items-start gap-2'>
+                        <Badge dot type='warning' />
+                        <Text className='text-sm'>
+                          {t('好友购买订阅套餐，您可获得')}{' '}
+                          <Text strong type='warning'>{renderQuota(rc.subscriptionFixedQuota)}</Text>{' '}
+                          {t('固定返利')}
+                        </Text>
+                      </div>
+                    )}
+                  </>
+                )}
+                {rc.minConsume > 0 && (
+                  <div className='flex items-start gap-2'>
+                    <Badge dot type='tertiary' />
+                    <Text type='tertiary' className='text-sm'>
+                      {t('返利要求单次充值不低于')}{' '}
+                      <Text strong>{renderQuota(rc.minConsume)}</Text>
+                    </Text>
+                  </div>
+                )}
+              </>
+            )}
             <div className='flex items-start gap-2'>
               <Badge dot type='success' />
               <Text type='tertiary' className='text-sm'>
                 {t('通过划转功能将奖励额度转入到您的账户余额中')}
               </Text>
             </div>
-
             <div className='flex items-start gap-2'>
               <Badge dot type='success' />
-              <Text type='tertiary' className='text-sm'>
-                {t('邀请的好友越多，获得的奖励越多')}
+              <Text className='text-sm' strong type='success'>
+                {t('邀请的好友越多，获得的奖励越多')} 🎉
               </Text>
             </div>
           </div>

@@ -26,6 +26,7 @@ func GenerateOAuthCode(c *gin.Context) {
 	affCode := c.Query("aff")
 	if affCode != "" {
 		session.Set("aff", affCode)
+		c.SetCookie("aff_code", affCode, 7*24*3600, "/", "", false, false)
 	}
 	session.Set("oauth_state", state)
 	err := session.Save()
@@ -262,11 +263,16 @@ func findOrCreateOAuthUser(c *gin.Context, provider oauth.Provider, oauthUser *o
 	user.Role = common.RoleCommonUser
 	user.Status = common.UserStatusEnabled
 
-	// Handle affiliate code
+	// Handle affiliate code: try session first, then cookie fallback
 	affCode := session.Get("aff")
 	inviterId := 0
 	if affCode != nil {
 		inviterId, _ = model.GetUserIdByAffCode(affCode.(string))
+	}
+	if inviterId == 0 {
+		if cookieAff, err := c.Cookie("aff_code"); err == nil && cookieAff != "" {
+			inviterId, _ = model.GetUserIdByAffCode(cookieAff)
+		}
 	}
 
 	// Use transaction to ensure user creation and OAuth binding are atomic

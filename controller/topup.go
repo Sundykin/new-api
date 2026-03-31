@@ -96,6 +96,15 @@ func GetTopUpInfo(c *gin.Context) {
 		"waffo_min_topup":     setting.WaffoMinTopUp,
 		"amount_options":      operation_setting.GetPaymentSetting().AmountOptions,
 		"discount":            operation_setting.GetPaymentSetting().AmountDiscount,
+		"quota_for_inviter":               common.QuotaForInviter,
+		"quota_for_invitee":               common.QuotaForInvitee,
+		"inviter_rebate_enabled":           common.InviterRebateEnabled,
+		"inviter_rebate_mode":              common.InviterRebateMode,
+		"inviter_rebate_ratio":             common.InviterRebateRatio,
+		"inviter_rebate_fixed_quota":       common.InviterRebateFixedQuota,
+		"inviter_rebate_subscription_ratio":      common.InviterRebateSubscriptionRatio,
+		"inviter_rebate_subscription_fixed_quota": common.InviterRebateSubscriptionFixedQuota,
+		"inviter_rebate_min_consume":       common.InviterRebateMinConsume,
 	}
 	common.ApiSuccess(c, data)
 }

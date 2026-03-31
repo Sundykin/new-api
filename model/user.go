@@ -313,6 +313,58 @@ func GetUserIdByAffCode(affCode string) (int, error) {
 	return user.Id, err
 }
 
+// GetInviterBasicInfo returns basic info of the inviter for display
+func GetInviterBasicInfo(inviterId int) (map[string]interface{}, error) {
+	if inviterId <= 0 {
+		return nil, nil
+	}
+	var user User
+	err := DB.Select("id, username, display_name").Where("id = ?", inviterId).First(&user).Error
+	if err != nil {
+		return nil, err
+	}
+	return map[string]interface{}{
+		"id":           user.Id,
+		"username":     user.Username,
+		"display_name": user.DisplayName,
+	}, nil
+}
+
+// BindInviter binds an inviter for a user (one-time only, inviter_id must be 0)
+func BindInviter(userId int, inviterId int) error {
+	result := DB.Model(&User{}).Where("id = ? AND inviter_id = 0", userId).Update("inviter_id", inviterId)
+	if result.Error != nil {
+		return result.Error
+	}
+	if result.RowsAffected == 0 {
+		return errors.New("邀请人已绑定，无法更改")
+	}
+	return nil
+}
+
+// GetInviteesByInviterId returns paginated list of users invited by a given user
+func GetInviteesByInviterId(inviterId int, page int, pageSize int) ([]map[string]interface{}, int64, error) {
+	var total int64
+	DB.Model(&User{}).Where("inviter_id = ?", inviterId).Count(&total)
+
+	var users []User
+	offset := (page - 1) * pageSize
+	err := DB.Select("id, username, display_name").Where("inviter_id = ?", inviterId).
+		Order("id desc").Offset(offset).Limit(pageSize).Find(&users).Error
+	if err != nil {
+		return nil, 0, err
+	}
+	var result []map[string]interface{}
+	for _, u := range users {
+		result = append(result, map[string]interface{}{
+			"id":           u.Id,
+			"username":     u.Username,
+			"display_name": u.DisplayName,
+		})
+	}
+	return result, total, nil
+}
+
 func DeleteUserById(id int) (err error) {
 	if id == 0 {
 		return errors.New("id 为空！")
@@ -327,6 +379,10 @@ func HardDeleteUserById(id int) error {
 	}
 	err := DB.Unscoped().Delete(&User{}, "id = ?", id).Error
 	return err
+}
+
+func InviteUser(inviterId int) (err error) {
+	return inviteUser(inviterId)
 }
 
 func inviteUser(inviterId int) (err error) {

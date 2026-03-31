@@ -117,6 +117,7 @@ const RegisterForm = () => {
   let affCode = new URLSearchParams(window.location.search).get('aff');
   if (affCode) {
     localStorage.setItem('aff', affCode);
+    document.cookie = `aff_code=${affCode};path=/;max-age=${7 * 24 * 3600}`;
   }
 
   const status = useMemo(() => {

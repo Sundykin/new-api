@@ -69,6 +69,8 @@ const EditUserModal = (props) => {
   const [addAmountLocal, setAddAmountLocal] = useState('');
   const [giveInviterRebate, setGiveInviterRebate] = useState(true);
   const [inviterId, setInviterId] = useState(0);
+  const [inviterIdInput, setInviterIdInput] = useState(0);
+  const [inviterSaving, setInviterSaving] = useState(false);
   const isMobile = useIsMobile();
   const [groupOptions, setGroupOptions] = useState([]);
   const [bindingModalVisible, setBindingModalVisible] = useState(false);
@@ -112,6 +114,7 @@ const EditUserModal = (props) => {
       data.password = '';
       formApiRef.current?.setValues({ ...getInitValues(), ...data });
       setInviterId(data.inviter_id || 0);
+      setInviterIdInput(data.inviter_id || 0);
       setGiveInviterRebate(true);
     } else {
       showError(message);
@@ -154,6 +157,30 @@ const EditUserModal = (props) => {
       showError(message);
     }
     setLoading(false);
+  };
+
+  /* ------------------- inviter helper ------------------- */
+  const saveInviter = async () => {
+    if (inviterIdInput === parseInt(userId)) {
+      showError(t('邀请人不能是用户自己'));
+      return;
+    }
+    setInviterSaving(true);
+    try {
+      const res = await API.put(`/api/user/${userId}/inviter`, {
+        inviter_id: parseInt(inviterIdInput) || 0,
+      });
+      const { success, message } = res.data;
+      if (success) {
+        showSuccess(t('邀请人更新成功'));
+        setInviterId(parseInt(inviterIdInput) || 0);
+      } else {
+        showError(message);
+      }
+    } catch (e) {
+      showError(e.message);
+    }
+    setInviterSaving(false);
   };
 
   /* --------------------- quota helper -------------------- */
@@ -352,6 +379,55 @@ const EditUserModal = (props) => {
                           </div>
                         </Col>
                       )}
+                    </Row>
+                  </Card>
+                )}
+
+                {/* 邀请人设置 */}
+                {userId && (
+                  <Card className='!rounded-2xl shadow-sm border-0'>
+                    <div className='flex items-center mb-2'>
+                      <Avatar
+                        size='small'
+                        color='orange'
+                        className='mr-2 shadow-md'
+                      >
+                        <IconUserGroup size={16} />
+                      </Avatar>
+                      <div>
+                        <Text className='text-lg font-medium'>
+                          {t('邀请人设置')}
+                        </Text>
+                        <div className='text-xs text-gray-600'>
+                          {t('设置该用户的邀请人')}
+                        </div>
+                      </div>
+                    </div>
+                    <Row gutter={12} type='flex' align='bottom'>
+                      <Col span={16}>
+                        <div className='mb-1'>
+                          <Text size='small'>{t('邀请人ID')}</Text>
+                        </div>
+                        <InputNumber
+                          value={inviterIdInput}
+                          onChange={setInviterIdInput}
+                          min={0}
+                          placeholder={t('请输入邀请人用户ID')}
+                          style={{ width: '100%' }}
+                        />
+                      </Col>
+                      <Col span={8}>
+                        <Button
+                          theme='solid'
+                          type='primary'
+                          loading={inviterSaving}
+                          onClick={saveInviter}
+                          icon={<IconSave />}
+                          style={{ width: '100%' }}
+                        >
+                          {t('保存')}
+                        </Button>
+                      </Col>
                     </Row>
                   </Card>
                 )}
