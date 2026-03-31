@@ -390,7 +390,7 @@ func ProcessTopupRebate(userId int, topupQuota int) {
 
 // ProcessSubscriptionRebate 订阅套餐完成后处理邀请人返利
 func ProcessSubscriptionRebate(userId int, planTotalAmount int64, planTitle string) {
-	if !common.InviterRebateEnabled || common.InviterRebateSubscriptionRatio <= 0 || planTotalAmount <= 0 {
+	if !common.InviterRebateEnabled || planTotalAmount <= 0 {
 		return
 	}
 	var user User
@@ -401,7 +401,12 @@ func ProcessSubscriptionRebate(userId int, planTotalAmount int64, planTitle stri
 	if common.InviterRebateMinConsume > 0 && int(planTotalAmount) < common.InviterRebateMinConsume {
 		return
 	}
-	rebateQuota := int(float64(planTotalAmount) * common.InviterRebateSubscriptionRatio)
+	var rebateQuota int
+	if common.InviterRebateMode == "ratio" {
+		rebateQuota = int(float64(planTotalAmount) * common.InviterRebateSubscriptionRatio)
+	} else {
+		rebateQuota = common.InviterRebateSubscriptionFixedQuota
+	}
 	if rebateQuota <= 0 {
 		return
 	}

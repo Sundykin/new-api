@@ -38,6 +38,7 @@ const DEFAULT_INPUTS = {
   InviterRebateMode: 'fixed',
   InviterRebateFixedQuota: '',
   InviterRebateRatio: '',
+  InviterRebateSubscriptionFixedQuota: '',
   InviterRebateSubscriptionRatio: '',
   InviterRebateMinConsume: '',
   'quota_setting.enable_free_model_pre_consume': true,
@@ -217,7 +218,7 @@ export default function SettingsCreditLimit(props) {
             {inputs.InviterRebateEnabled && (
               <>
                 <Row gutter={16}>
-                  <Col xs={24} sm={12} md={8} lg={8} xl={8}>
+                  <Col xs={24} sm={8} md={8} lg={8} xl={8}>
                     <Form.RadioGroup
                       label={t('返利模式')}
                       field={'InviterRebateMode'}
@@ -236,60 +237,77 @@ export default function SettingsCreditLimit(props) {
                     />
                   </Col>
                   {inputs.InviterRebateMode === 'fixed' && (
-                    <Col xs={24} sm={12} md={8} lg={8} xl={8}>
-                      <Form.InputNumber
-                        label={t('充值返利固定额度')}
-                        field={'InviterRebateFixedQuota'}
-                        step={1}
-                        min={0}
-                        suffix={'Token'}
-                        placeholder={t('例如：50000')}
-                        onChange={(value) =>
-                          setInputs({
-                            ...inputs,
-                            InviterRebateFixedQuota: String(value),
-                          })
-                        }
-                      />
-                    </Col>
+                    <>
+                      <Col xs={24} sm={8} md={8} lg={8} xl={8}>
+                        <Form.InputNumber
+                          label={t('充值返利固定额度')}
+                          field={'InviterRebateFixedQuota'}
+                          step={1}
+                          min={0}
+                          suffix={'Token'}
+                          placeholder={t('例如：50000')}
+                          onChange={(value) =>
+                            setInputs({
+                              ...inputs,
+                              InviterRebateFixedQuota: String(value),
+                            })
+                          }
+                        />
+                      </Col>
+                      <Col xs={24} sm={8} md={8} lg={8} xl={8}>
+                        <Form.InputNumber
+                          label={t('订阅返利固定额度')}
+                          field={'InviterRebateSubscriptionFixedQuota'}
+                          step={1}
+                          min={0}
+                          suffix={'Token'}
+                          placeholder={t('例如：50000')}
+                          onChange={(value) =>
+                            setInputs({
+                              ...inputs,
+                              InviterRebateSubscriptionFixedQuota: String(value),
+                            })
+                          }
+                        />
+                      </Col>
+                    </>
                   )}
                   {inputs.InviterRebateMode === 'ratio' && (
-                    <Col xs={24} sm={12} md={8} lg={8} xl={8}>
-                      <Form.InputNumber
-                        label={t('充值返利比例')}
-                        field={'InviterRebateRatio'}
-                        step={0.01}
-                        min={0}
-                        max={1}
-                        placeholder={t('例如：0.1 表示 10%')}
-                        onChange={(value) =>
-                          setInputs({
-                            ...inputs,
-                            InviterRebateRatio: String(value),
-                          })
-                        }
-                      />
-                    </Col>
+                    <>
+                      <Col xs={24} sm={8} md={8} lg={8} xl={8}>
+                        <Form.InputNumber
+                          label={t('充值返利比例')}
+                          field={'InviterRebateRatio'}
+                          step={0.01}
+                          min={0}
+                          max={1}
+                          placeholder={t('例如：0.1 表示 10%')}
+                          onChange={(value) =>
+                            setInputs({
+                              ...inputs,
+                              InviterRebateRatio: String(value),
+                            })
+                          }
+                        />
+                      </Col>
+                      <Col xs={24} sm={8} md={8} lg={8} xl={8}>
+                        <Form.InputNumber
+                          label={t('订阅套餐返利比例')}
+                          field={'InviterRebateSubscriptionRatio'}
+                          step={0.01}
+                          min={0}
+                          max={1}
+                          placeholder={t('例如：0.1 表示 10%')}
+                          onChange={(value) =>
+                            setInputs({
+                              ...inputs,
+                              InviterRebateSubscriptionRatio: String(value),
+                            })
+                          }
+                        />
+                      </Col>
+                    </>
                   )}
-                </Row>
-                <Row gutter={16}>
-                  <Col xs={24} sm={12} md={8} lg={8} xl={8}>
-                    <Form.InputNumber
-                      label={t('订阅套餐返利比例')}
-                      field={'InviterRebateSubscriptionRatio'}
-                      step={0.01}
-                      min={0}
-                      max={1}
-                      extraText={t('按订阅套餐总额度的比例返利给邀请人，0为不返利')}
-                      placeholder={t('例如：0.1 表示 10%')}
-                      onChange={(value) =>
-                        setInputs({
-                          ...inputs,
-                          InviterRebateSubscriptionRatio: String(value),
-                        })
-                      }
-                    />
-                  </Col>
                 </Row>
                 <Row gutter={16}>
                   <Col xs={24} sm={12} md={8} lg={8} xl={8}>

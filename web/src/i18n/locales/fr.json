@@ -2991,6 +2991,7 @@
     "管理员调整余额返利模式": "Mode de remise d'ajustement admin",
     "管理员调整余额返利额度": "Quota de remise d'ajustement admin",
     "管理员调整余额返利比例": "Ratio de remise d'ajustement admin",
+    "订阅返利固定额度": "Quota fixe de remise d'abonnement",
     "订阅套餐返利比例": "Ratio de remise d'abonnement",
     "按订阅套餐总额度的比例返利给邀请人，0为不返利": "Remise au parrain basée sur le quota total de l'abonnement, 0 pour désactiver",
     "返利最低消费额度": "Consommation minimale pour la remise",
