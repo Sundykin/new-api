@@ -17,9 +17,19 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 For commercial licensing, please contact support@quantumnous.com
 */
 
-import React from 'react';
+import React, { useState } from 'react';
 import { Modal, Typography, Input, InputNumber } from '@douyinfe/semi-ui';
 import { CreditCard } from 'lucide-react';
+import {
+  renderQuota as renderQuotaHelper,
+  getCurrencyConfig,
+} from '../../../helpers';
+import {
+  quotaToDisplayAmount,
+  displayAmountToQuota,
+} from '../../../helpers/quota';
+
+const { Text } = Typography;
 
 const TransferModal = ({
   t,
@@ -32,6 +42,42 @@ const TransferModal = ({
   transferAmount,
   setTransferAmount,
 }) => {
+  const [amountLocal, setAmountLocal] = useState('');
+  const currencyConfig = getCurrencyConfig();
+  const showCurrency = currencyConfig.type !== 'TOKENS';
+  const affQuota = userState?.user?.aff_quota || 0;
+  const minQuota = getQuotaPerUnit();
+
+  const handleAmountChange = (val) => {
+    setAmountLocal(val);
+    if (val != null && val !== '') {
+      setTransferAmount(displayAmountToQuota(Math.abs(val)));
+    } else {
+      setTransferAmount(minQuota);
+    }
+  };
+
+  const handleQuotaChange = (val) => {
+    setTransferAmount(val);
+    if (showCurrency && val != null && val !== '') {
+      setAmountLocal(
+        Number(quotaToDisplayAmount(Math.abs(val)).toFixed(2)),
+      );
+    } else {
+      setAmountLocal('');
+    }
+  };
+
+  // Transfer all
+  const handleTransferAll = () => {
+    setTransferAmount(affQuota);
+    if (showCurrency) {
+      setAmountLocal(
+        Number(quotaToDisplayAmount(affQuota).toFixed(2)),
+      );
+    }
+  };
+
   return (
     <Modal
       title={
@@ -41,32 +87,82 @@ const TransferModal = ({
         </div>
       }
       visible={openTransfer}
-      onOk={transfer}
-      onCancel={handleTransferCancel}
+      onOk={() => {
+        transfer();
+        setAmountLocal('');
+      }}
+      onCancel={() => {
+        handleTransferCancel();
+        setAmountLocal('');
+      }}
       maskClosable={false}
       centered
     >
       <div className='space-y-4'>
         <div>
-          <Typography.Text strong className='block mb-2'>
+          <Text strong className='block mb-2'>
             {t('可用邀请额度')}
-          </Typography.Text>
+          </Text>
           <Input
-            value={renderQuota(userState?.user?.aff_quota)}
+            value={renderQuota(affQuota)}
             disabled
             className='!rounded-lg'
           />
         </div>
+
+        <div className='mb-4'>
+          <Text type='secondary' className='block mb-2'>
+            {`${t('划转后余额：')}${renderQuota(affQuota)} - ${renderQuota(transferAmount || 0)} = ${renderQuota(Math.max(0, affQuota - (transferAmount || 0)))}`}
+          </Text>
+        </div>
+
+        {showCurrency && (
+          <div>
+            <div className='mb-1'>
+              <Text size='small'>{t('金额')}</Text>
+              <Text size='small' type='tertiary'>
+                {' '}
+                ({t('仅用于换算，实际保存的是额度')})
+              </Text>
+            </div>
+            <InputNumber
+              prefix={currencyConfig.symbol}
+              placeholder={t('输入金额')}
+              value={amountLocal}
+              precision={2}
+              onChange={handleAmountChange}
+              style={{ width: '100%' }}
+              showClear
+            />
+          </div>
+        )}
+
         <div>
-          <Typography.Text strong className='block mb-2'>
-            {t('划转额度')} · {t('最低') + renderQuota(getQuotaPerUnit())}
-          </Typography.Text>
+          <div className='flex items-center justify-between mb-1'>
+            <div>
+              <Text size='small'>{t('额度')}</Text>
+              <Text size='small' type='tertiary'>
+                {' · '}
+                {t('最低') + renderQuota(minQuota)}
+              </Text>
+            </div>
+            <Text
+              size='small'
+              link
+              onClick={handleTransferAll}
+              style={{ cursor: 'pointer' }}
+            >
+              {t('全部划转')}
+            </Text>
+          </div>
           <InputNumber
-            min={getQuotaPerUnit()}
-            max={userState?.user?.aff_quota || 0}
+            min={minQuota}
+            max={affQuota}
             value={transferAmount}
-            onChange={(value) => setTransferAmount(value)}
-            className='w-full !rounded-lg'
+            onChange={handleQuotaChange}
+            style={{ width: '100%' }}
+            showClear
+            step={500000}
           />
         </div>
       </div>
