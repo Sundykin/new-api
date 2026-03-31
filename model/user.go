@@ -388,6 +388,29 @@ func ProcessTopupRebate(userId int, topupQuota int) {
 	}
 }
 
+// ProcessSubscriptionRebate 订阅套餐完成后处理邀请人返利
+func ProcessSubscriptionRebate(userId int, planTotalAmount int64, planTitle string) {
+	if !common.InviterRebateEnabled || common.InviterRebateSubscriptionRatio <= 0 || planTotalAmount <= 0 {
+		return
+	}
+	var user User
+	err := DB.Select("inviter_id").Where("id = ?", userId).First(&user).Error
+	if err != nil || user.InviterId <= 0 {
+		return
+	}
+	if common.InviterRebateMinConsume > 0 && int(planTotalAmount) < common.InviterRebateMinConsume {
+		return
+	}
+	rebateQuota := int(float64(planTotalAmount) * common.InviterRebateSubscriptionRatio)
+	if rebateQuota <= 0 {
+		return
+	}
+	err = GiveInviterRebate(user.InviterId, rebateQuota, fmt.Sprintf("邀请用户订阅返利 %s（被邀请用户ID：%d，套餐：%s，套餐额度：%s）", logger.LogQuota(rebateQuota), userId, planTitle, logger.LogQuota(int(planTotalAmount))))
+	if err != nil {
+		common.SysError(fmt.Sprintf("邀请人订阅返利失败：inviterId=%d, err=%s", user.InviterId, err.Error()))
+	}
+}
+
 func (user *User) TransferAffQuotaToQuota(quota int) error {
 	// 检查quota是否小于最小额度
 	if float64(quota) < common.QuotaPerUnit {

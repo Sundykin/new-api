@@ -38,6 +38,7 @@ const DEFAULT_INPUTS = {
   InviterRebateMode: 'fixed',
   InviterRebateFixedQuota: '',
   InviterRebateRatio: '',
+  InviterRebateSubscriptionRatio: '',
   InviterRebateMinConsume: '',
   'quota_setting.enable_free_model_pre_consume': true,
 };
@@ -270,6 +271,25 @@ export default function SettingsCreditLimit(props) {
                       />
                     </Col>
                   )}
+                </Row>
+                <Row gutter={16}>
+                  <Col xs={24} sm={12} md={8} lg={8} xl={8}>
+                    <Form.InputNumber
+                      label={t('订阅套餐返利比例')}
+                      field={'InviterRebateSubscriptionRatio'}
+                      step={0.01}
+                      min={0}
+                      max={1}
+                      extraText={t('按订阅套餐总额度的比例返利给邀请人，0为不返利')}
+                      placeholder={t('例如：0.1 表示 10%')}
+                      onChange={(value) =>
+                        setInputs({
+                          ...inputs,
+                          InviterRebateSubscriptionRatio: String(value),
+                        })
+                      }
+                    />
+                  </Col>
                 </Row>
                 <Row gutter={16}>
                   <Col xs={24} sm={12} md={8} lg={8} xl={8}>

@@ -3492,6 +3492,8 @@
     "管理员调整余额返利模式": "Chế độ hoàn trả điều chỉnh số dư admin",
     "管理员调整余额返利额度": "Hạn ngạch hoàn trả điều chỉnh số dư admin",
     "管理员调整余额返利比例": "Tỷ lệ hoàn trả điều chỉnh số dư admin",
+    "订阅套餐返利比例": "Tỷ lệ hoàn trả gói đăng ký",
+    "按订阅套餐总额度的比例返利给邀请人，0为不返利": "Hoàn trả cho người mời theo tỷ lệ tổng hạn ngạch gói đăng ký, 0 để tắt",
     "返利最低消费额度": "Hạn ngạch tiêu dùng tối thiểu cho hoàn trả",
     "被邀请用户消费达到此额度后才给邀请人返利，0为不限制": "Hoàn trả cho người mời chỉ áp dụng sau khi người được mời tiêu dùng đạt mức này, 0 là không giới hạn",
     "是否奖励邀请人": "Thưởng người mời",

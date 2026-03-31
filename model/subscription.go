@@ -517,6 +517,7 @@ func CompleteSubscriptionOrder(tradeNo string, providerPayload string) error {
 	var logPlanTitle string
 	var logMoney float64
 	var logPaymentMethod string
+	var logPlanTotalAmount int64
 	var upgradeGroup string
 	err := DB.Transaction(func(tx *gorm.DB) error {
 		var order SubscriptionOrder
@@ -556,6 +557,7 @@ func CompleteSubscriptionOrder(tradeNo string, providerPayload string) error {
 		logPlanTitle = plan.Title
 		logMoney = order.Money
 		logPaymentMethod = order.PaymentMethod
+		logPlanTotalAmount = plan.TotalAmount
 		return nil
 	})
 	if err != nil {
@@ -567,6 +569,7 @@ func CompleteSubscriptionOrder(tradeNo string, providerPayload string) error {
 	if logUserId > 0 {
 		msg := fmt.Sprintf("订阅购买成功，套餐: %s，支付金额: %.2f，支付方式: %s", logPlanTitle, logMoney, logPaymentMethod)
 		RecordLog(logUserId, LogTypeTopup, msg)
+		ProcessSubscriptionRebate(logUserId, logPlanTotalAmount, logPlanTitle)
 	}
 	return nil
 }

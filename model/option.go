@@ -126,6 +126,7 @@ func InitOptionMap() {
 	common.OptionMap["InviterRebateMode"] = common.InviterRebateMode
 	common.OptionMap["InviterRebateFixedQuota"] = strconv.Itoa(common.InviterRebateFixedQuota)
 	common.OptionMap["InviterRebateRatio"] = strconv.FormatFloat(common.InviterRebateRatio, 'f', -1, 64)
+	common.OptionMap["InviterRebateSubscriptionRatio"] = strconv.FormatFloat(common.InviterRebateSubscriptionRatio, 'f', -1, 64)
 	common.OptionMap["InviterRebateMinConsume"] = strconv.Itoa(common.InviterRebateMinConsume)
 	common.OptionMap["QuotaRemindThreshold"] = strconv.Itoa(common.QuotaRemindThreshold)
 	common.OptionMap["PreConsumedQuota"] = strconv.Itoa(common.PreConsumedQuota)
@@ -455,6 +456,8 @@ func updateOptionMap(key string, value string) (err error) {
 		common.InviterRebateFixedQuota, _ = strconv.Atoi(value)
 	case "InviterRebateRatio":
 		common.InviterRebateRatio, _ = strconv.ParseFloat(value, 64)
+	case "InviterRebateSubscriptionRatio":
+		common.InviterRebateSubscriptionRatio, _ = strconv.ParseFloat(value, 64)
 	case "InviterRebateMinConsume":
 		common.InviterRebateMinConsume, _ = strconv.Atoi(value)
 	case "QuotaRemindThreshold":

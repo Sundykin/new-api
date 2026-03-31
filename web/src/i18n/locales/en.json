@@ -3037,6 +3037,8 @@
     "管理员调整余额返利模式": "Admin adjustment rebate mode",
     "管理员调整余额返利额度": "Admin adjustment rebate quota",
     "管理员调整余额返利比例": "Admin adjustment rebate ratio",
+    "订阅套餐返利比例": "Subscription rebate ratio",
+    "按订阅套餐总额度的比例返利给邀请人，0为不返利": "Rebate inviter based on subscription plan total quota ratio, 0 to disable",
     "返利最低消费额度": "Minimum consumption for rebate",
     "被邀请用户消费达到此额度后才给邀请人返利，0为不限制": "Inviter rebate only applies after invited user consumes this amount, 0 for no limit",
     "是否奖励邀请人": "Reward inviter",
