@@ -122,6 +122,11 @@ func InitOptionMap() {
 	common.OptionMap["QuotaForNewUser"] = strconv.Itoa(common.QuotaForNewUser)
 	common.OptionMap["QuotaForInviter"] = strconv.Itoa(common.QuotaForInviter)
 	common.OptionMap["QuotaForInvitee"] = strconv.Itoa(common.QuotaForInvitee)
+	common.OptionMap["InviterRebateEnabled"] = strconv.FormatBool(common.InviterRebateEnabled)
+	common.OptionMap["InviterRebateMode"] = common.InviterRebateMode
+	common.OptionMap["InviterRebateFixedQuota"] = strconv.Itoa(common.InviterRebateFixedQuota)
+	common.OptionMap["InviterRebateRatio"] = strconv.FormatFloat(common.InviterRebateRatio, 'f', -1, 64)
+	common.OptionMap["InviterRebateMinConsume"] = strconv.Itoa(common.InviterRebateMinConsume)
 	common.OptionMap["QuotaRemindThreshold"] = strconv.Itoa(common.QuotaRemindThreshold)
 	common.OptionMap["PreConsumedQuota"] = strconv.Itoa(common.PreConsumedQuota)
 	common.OptionMap["ModelRequestRateLimitCount"] = strconv.Itoa(setting.ModelRequestRateLimitCount)
@@ -312,6 +317,8 @@ func updateOptionMap(key string, value string) (err error) {
 			system_setting.WorkerAllowHttpImageRequestEnabled = boolValue
 		case "DefaultUseAutoGroup":
 			setting.DefaultUseAutoGroup = boolValue
+		case "InviterRebateEnabled":
+			common.InviterRebateEnabled = boolValue
 		case "ExposeRatioEnabled":
 			ratio_setting.SetExposeRatioEnabled(boolValue)
 		}
@@ -442,6 +449,14 @@ func updateOptionMap(key string, value string) (err error) {
 		common.QuotaForInviter, _ = strconv.Atoi(value)
 	case "QuotaForInvitee":
 		common.QuotaForInvitee, _ = strconv.Atoi(value)
+	case "InviterRebateMode":
+		common.InviterRebateMode = value
+	case "InviterRebateFixedQuota":
+		common.InviterRebateFixedQuota, _ = strconv.Atoi(value)
+	case "InviterRebateRatio":
+		common.InviterRebateRatio, _ = strconv.ParseFloat(value, 64)
+	case "InviterRebateMinConsume":
+		common.InviterRebateMinConsume, _ = strconv.Atoi(value)
 	case "QuotaRemindThreshold":
 		common.QuotaRemindThreshold, _ = strconv.Atoi(value)
 	case "PreConsumedQuota":

@@ -18,7 +18,7 @@ For commercial licensing, please contact support@quantumnous.com
 */
 
 import React, { useEffect, useState, useRef } from 'react';
-import { Button, Col, Form, Row, Spin } from '@douyinfe/semi-ui';
+import { Button, Col, Form, Row, Spin, Typography } from '@douyinfe/semi-ui';
 import { useTranslation } from 'react-i18next';
 import {
   compareObjects,
@@ -27,17 +27,29 @@ import {
   showSuccess,
   showWarning,
 } from '../../../helpers';
+import { toBoolean } from '../../../helpers/boolean';
+
+const DEFAULT_INPUTS = {
+  QuotaForNewUser: '',
+  PreConsumedQuota: '',
+  QuotaForInviter: '',
+  QuotaForInvitee: '',
+  InviterRebateEnabled: false,
+  InviterRebateMode: 'fixed',
+  InviterRebateFixedQuota: '',
+  InviterRebateRatio: '',
+  InviterRebateMinConsume: '',
+  'quota_setting.enable_free_model_pre_consume': true,
+};
+const INPUT_KEYS = Object.keys(DEFAULT_INPUTS);
+const BOOLEAN_KEYS = INPUT_KEYS.filter(
+  (k) => typeof DEFAULT_INPUTS[k] === 'boolean',
+);
 
 export default function SettingsCreditLimit(props) {
   const { t } = useTranslation();
   const [loading, setLoading] = useState(false);
-  const [inputs, setInputs] = useState({
-    QuotaForNewUser: '',
-    PreConsumedQuota: '',
-    QuotaForInviter: '',
-    QuotaForInvitee: '',
-    'quota_setting.enable_free_model_pre_consume': true,
-  });
+  const [inputs, setInputs] = useState(DEFAULT_INPUTS);
   const refForm = useRef();
   const [inputsRow, setInputsRow] = useState(inputs);
 
@@ -77,16 +89,27 @@ export default function SettingsCreditLimit(props) {
   }
 
   useEffect(() => {
-    const currentInputs = {};
-    for (let key in props.options) {
-      if (Object.keys(inputs).includes(key)) {
-        currentInputs[key] = props.options[key];
+    const currentInputs = { ...DEFAULT_INPUTS };
+    for (let key of INPUT_KEYS) {
+      if (key in props.options) {
+        currentInputs[key] = BOOLEAN_KEYS.includes(key)
+          ? toBoolean(props.options[key])
+          : props.options[key];
       }
     }
     setInputs(currentInputs);
     setInputsRow(structuredClone(currentInputs));
-    refForm.current.setValues(currentInputs);
+    // Delay setValues to ensure conditionally-rendered fields are mounted
+    setTimeout(() => {
+      refForm.current?.setValues(currentInputs);
+    }, 0);
   }, [props.options]);
+
+  // Re-sync Form values when conditional sections mount/unmount
+  useEffect(() => {
+    refForm.current?.setValues(inputs);
+  }, [inputs.InviterRebateEnabled, inputs.InviterRebateMode]);
+
   return (
     <>
       <Spin spinning={loading}>
@@ -167,6 +190,109 @@ export default function SettingsCreditLimit(props) {
                 />
               </Col>
             </Row>
+            <Row gutter={16}>
+              <Col xs={24}>
+                <Typography.Title
+                  heading={6}
+                  style={{ marginTop: 12, marginBottom: 4 }}
+                >
+                  {t('邀请返利设置')}
+                </Typography.Title>
+              </Col>
+              <Col xs={24} sm={12} md={8} lg={8} xl={8}>
+                <Form.Switch
+                  label={t('启用邀请返利')}
+                  field={'InviterRebateEnabled'}
+                  extraText={t('被邀请用户充值后给邀请人返利')}
+                  onChange={(value) =>
+                    setInputs({
+                      ...inputs,
+                      InviterRebateEnabled: value,
+                    })
+                  }
+                />
+              </Col>
+            </Row>
+            {inputs.InviterRebateEnabled && (
+              <>
+                <Row gutter={16}>
+                  <Col xs={24} sm={12} md={8} lg={8} xl={8}>
+                    <Form.RadioGroup
+                      label={t('返利模式')}
+                      field={'InviterRebateMode'}
+                      type='button'
+                      initValue={inputs.InviterRebateMode || 'fixed'}
+                      onChange={(e) =>
+                        setInputs({
+                          ...inputs,
+                          InviterRebateMode: e.target.value,
+                        })
+                      }
+                      options={[
+                        { label: t('固定额度'), value: 'fixed' },
+                        { label: t('按比例'), value: 'ratio' },
+                      ]}
+                    />
+                  </Col>
+                  {inputs.InviterRebateMode === 'fixed' && (
+                    <Col xs={24} sm={12} md={8} lg={8} xl={8}>
+                      <Form.InputNumber
+                        label={t('充值返利固定额度')}
+                        field={'InviterRebateFixedQuota'}
+                        step={1}
+                        min={0}
+                        suffix={'Token'}
+                        placeholder={t('例如：50000')}
+                        onChange={(value) =>
+                          setInputs({
+                            ...inputs,
+                            InviterRebateFixedQuota: String(value),
+                          })
+                        }
+                      />
+                    </Col>
+                  )}
+                  {inputs.InviterRebateMode === 'ratio' && (
+                    <Col xs={24} sm={12} md={8} lg={8} xl={8}>
+                      <Form.InputNumber
+                        label={t('充值返利比例')}
+                        field={'InviterRebateRatio'}
+                        step={0.01}
+                        min={0}
+                        max={1}
+                        placeholder={t('例如：0.1 表示 10%')}
+                        onChange={(value) =>
+                          setInputs({
+                            ...inputs,
+                            InviterRebateRatio: String(value),
+                          })
+                        }
+                      />
+                    </Col>
+                  )}
+                </Row>
+                <Row gutter={16}>
+                  <Col xs={24} sm={12} md={8} lg={8} xl={8}>
+                    <Form.InputNumber
+                      label={t('返利最低消费额度')}
+                      field={'InviterRebateMinConsume'}
+                      step={1}
+                      min={0}
+                      suffix={'Token'}
+                      extraText={t('被邀请用户消费达到此额度后才给邀请人返利，0为不限制')}
+                      placeholder={'0'}
+                      onChange={(value) =>
+                        setInputs({
+                          ...inputs,
+                          InviterRebateMinConsume: String(value),
+                        })
+                      }
+                    />
+                  </Col>
+                </Row>
+              </>
+            )}
+
             <Row>
               <Col>
                 <Form.Switch

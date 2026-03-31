@@ -574,6 +574,27 @@ func UpdateUser(c *gin.Context) {
 	}
 	if originUser.Quota != updatedUser.Quota {
 		model.RecordLog(originUser.Id, model.LogTypeManage, fmt.Sprintf("管理员将用户额度从 %s修改为 %s", logger.LogQuota(originUser.Quota), logger.LogQuota(updatedUser.Quota)))
+		if updatedUser.GiveInviterRebate && originUser.InviterId > 0 {
+			var adminRebateQuota int
+			quotaDelta := updatedUser.Quota - originUser.Quota
+			if common.InviterRebateMinConsume > 0 && quotaDelta < common.InviterRebateMinConsume {
+				quotaDelta = 0
+			}
+			if quotaDelta > 0 {
+				if common.InviterRebateMode == "ratio" {
+					adminRebateQuota = int(float64(quotaDelta) * common.InviterRebateRatio)
+				} else {
+					adminRebateQuota = common.InviterRebateFixedQuota
+				}
+			}
+			if adminRebateQuota > 0 {
+				err := model.GiveInviterRebate(originUser.InviterId, adminRebateQuota,
+					fmt.Sprintf("管理员调整用户余额返利 %s（被邀请用户ID：%d）", logger.LogQuota(adminRebateQuota), originUser.Id))
+				if err != nil {
+					common.SysError(fmt.Sprintf("管理员调整余额返利失败：inviterId=%d, err=%s", originUser.InviterId, err.Error()))
+				}
+			}
+		}
 	}
 	c.JSON(http.StatusOK, gin.H{
 		"success": true,

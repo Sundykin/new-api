@@ -46,6 +46,7 @@ import {
   Row,
   Col,
   InputNumber,
+  Switch,
 } from '@douyinfe/semi-ui';
 import {
   IconUser,
@@ -66,6 +67,8 @@ const EditUserModal = (props) => {
   const [addQuotaModalOpen, setIsModalOpen] = useState(false);
   const [addQuotaLocal, setAddQuotaLocal] = useState('');
   const [addAmountLocal, setAddAmountLocal] = useState('');
+  const [giveInviterRebate, setGiveInviterRebate] = useState(true);
+  const [inviterId, setInviterId] = useState(0);
   const isMobile = useIsMobile();
   const [groupOptions, setGroupOptions] = useState([]);
   const [bindingModalVisible, setBindingModalVisible] = useState(false);
@@ -108,6 +111,8 @@ const EditUserModal = (props) => {
     if (success) {
       data.password = '';
       formApiRef.current?.setValues({ ...getInitValues(), ...data });
+      setInviterId(data.inviter_id || 0);
+      setGiveInviterRebate(true);
     } else {
       showError(message);
     }
@@ -136,6 +141,7 @@ const EditUserModal = (props) => {
       payload.quota = parseInt(payload.quota) || 0;
     if (userId) {
       payload.id = parseInt(userId);
+      payload.give_inviter_rebate = giveInviterRebate;
     }
     const url = userId ? `/api/user/` : `/api/user/self`;
     const res = await API.put(url, payload);
@@ -323,6 +329,29 @@ const EditUserModal = (props) => {
                           />
                         </Form.Slot>
                       </Col>
+
+                      {inviterId > 0 && (
+                        <Col span={24}>
+                          <div className='flex items-center justify-between py-2'>
+                            <div>
+                              <Text size='small' strong>
+                                {t('是否奖励邀请人')}
+                              </Text>
+                              <div>
+                                <Text size='small' type='tertiary'>
+                                  {t('开启后，调整余额时将给邀请人发放返利')}
+                                </Text>
+                              </div>
+                            </div>
+                            <Switch
+                              checked={giveInviterRebate}
+                              onChange={(value) =>
+                                setGiveInviterRebate(value)
+                              }
+                            />
+                          </div>
+                        </Col>
+                      )}
                     </Row>
                   </Card>
                 )}

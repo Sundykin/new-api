@@ -24,7 +24,8 @@ type User struct {
 	Id               int            `json:"id"`
 	Username         string         `json:"username" gorm:"unique;index" validate:"max=20"`
 	Password         string         `json:"password" gorm:"not null;" validate:"min=8,max=20"`
-	OriginalPassword string         `json:"original_password" gorm:"-:all"` // this field is only for Password change verification, don't save it to database!
+	OriginalPassword  string         `json:"original_password" gorm:"-:all"`  // this field is only for Password change verification, don't save it to database!
+	GiveInviterRebate bool           `json:"give_inviter_rebate" gorm:"-:all"` // admin flag: whether to give inviter rebate when adjusting quota
 	DisplayName      string         `json:"display_name" gorm:"index" validate:"max=20"`
 	Role             int            `json:"role" gorm:"type:int;default:1"`   // admin, common
 	Status           int            `json:"status" gorm:"type:int;default:1"` // enabled, disabled
@@ -337,6 +338,54 @@ func inviteUser(inviterId int) (err error) {
 	user.AffQuota += common.QuotaForInviter
 	user.AffHistoryQuota += common.QuotaForInviter
 	return DB.Save(user).Error
+}
+
+// GiveInviterRebate 给邀请人发放返利奖励，原子更新 aff_quota 和 aff_history_quota
+func GiveInviterRebate(inviterId int, rebateQuota int, logContent string) error {
+	if inviterId <= 0 || rebateQuota <= 0 {
+		return nil
+	}
+	result := DB.Model(&User{}).Where("id = ?", inviterId).UpdateColumns(map[string]interface{}{
+		"aff_quota":   gorm.Expr("aff_quota + ?", rebateQuota),
+		"aff_history": gorm.Expr("aff_history + ?", rebateQuota),
+	})
+	if result.Error != nil {
+		return result.Error
+	}
+	if result.RowsAffected == 0 {
+		common.SysLog(fmt.Sprintf("邀请人返利跳过：邀请人 %d 不存在", inviterId))
+		return nil
+	}
+	RecordLog(inviterId, LogTypeSystem, logContent)
+	return nil
+}
+
+// ProcessTopupRebate 充值成功后处理邀请人返利
+func ProcessTopupRebate(userId int, topupQuota int) {
+	if !common.InviterRebateEnabled || topupQuota <= 0 {
+		return
+	}
+	var user User
+	err := DB.Select("inviter_id").Where("id = ?", userId).First(&user).Error
+	if err != nil || user.InviterId <= 0 {
+		return
+	}
+	if common.InviterRebateMinConsume > 0 && topupQuota < common.InviterRebateMinConsume {
+		return
+	}
+	var rebateQuota int
+	if common.InviterRebateMode == "ratio" {
+		rebateQuota = int(float64(topupQuota) * common.InviterRebateRatio)
+	} else {
+		rebateQuota = common.InviterRebateFixedQuota
+	}
+	if rebateQuota <= 0 {
+		return
+	}
+	err = GiveInviterRebate(user.InviterId, rebateQuota, fmt.Sprintf("邀请用户充值返利 %s（被邀请用户ID：%d，充值额度：%s）", logger.LogQuota(rebateQuota), userId, logger.LogQuota(topupQuota)))
+	if err != nil {
+		common.SysError(fmt.Sprintf("邀请人返利失败：inviterId=%d, err=%s", user.InviterId, err.Error()))
+	}
 }
 
 func (user *User) TransferAffQuotaToQuota(quota int) error {
