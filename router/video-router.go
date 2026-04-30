@@ -49,4 +49,50 @@ func SetVideoRouter(router *gin.Engine) {
 		// Maps to: /?Action=CVSync2AsyncSubmitTask&Version=2022-08-31 and /?Action=CVSync2AsyncGetResult&Version=2022-08-31
 		jimengOfficialGroup.POST("/", controller.RelayTask)
 	}
+
+	// 穗禾视频渠道：标准生成接口 + 画质增强 + 任务详情都进入计费 / 任务表，
+	// 走 RelayTask 通路；其他辅助接口（余额 / 流水 / 模型 / 渠道 / 素材库 / 健康检查）
+	// 由 SuiheProxy 直转上游，不计费、不写本地任务表。
+	suiheGroup := router.Group("/suihe/v1")
+	suiheGroup.Use(middleware.RouteTag("relay"))
+	{
+		// 视频生成（计费、入任务表）
+		genGroup := suiheGroup.Group("")
+		genGroup.Use(middleware.TokenAuth(), middleware.Distribute())
+		genGroup.POST("/videos/generations", controller.RelayTask)
+
+		// 画质增强：先用 SuiheEnhanceConvert 反查源任务并锁定渠道，再走 RelayTask
+		enhanceGroup := suiheGroup.Group("")
+		enhanceGroup.Use(middleware.TokenAuth(), middleware.SuiheEnhanceConvert(), middleware.Distribute())
+		enhanceGroup.POST("/videos/enhance", controller.RelayTask)
+
+		// 任务详情：从本地任务表查询并按穗禾结构返回（task_xxxx 公开 ID）
+		fetchGroup := suiheGroup.Group("")
+		fetchGroup.Use(middleware.TokenAuth())
+		fetchGroup.GET("/tasks/:task_id", controller.SuiheTaskDetail)
+
+		// 反向代理：余额 / 流水 / 模型 / 渠道
+		proxyGroup := suiheGroup.Group("")
+		proxyGroup.Use(middleware.TokenAuth())
+		proxyGroup.POST("/tasks/list", controller.SuiheTasksList)
+		proxyGroup.GET("/balance", controller.SuiheBalance)
+		proxyGroup.GET("/transactions", controller.SuiheTransactions)
+		proxyGroup.GET("/models", controller.SuiheModels)
+		proxyGroup.GET("/channels", controller.SuiheChannels)
+
+		// 素材库：用户自管上传 / 列表 / 删除（每个穗禾渠道对应独立 API Key，天然隔离）
+		assetGroup := suiheGroup.Group("/asset-library")
+		assetGroup.Use(middleware.TokenAuth())
+		assetGroup.POST("/assets", controller.SuiheAssetUpload)
+		assetGroup.POST("/assets/list", controller.SuiheAssetList)
+		assetGroup.DELETE("/assets/:id", controller.SuiheAssetDelete)
+	}
+
+	// 穗禾健康检查：仅校验 token 即可（绑定 Key 时使用）
+	suiheHealthGroup := router.Group("/suihe")
+	suiheHealthGroup.Use(middleware.RouteTag("relay"))
+	suiheHealthGroup.Use(middleware.TokenAuth())
+	{
+		suiheHealthGroup.GET("/health", controller.SuiheHealth)
+	}
 }

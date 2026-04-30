@@ -102,6 +102,33 @@ import {
   SiX,
 } from 'react-icons/si';
 
+// 穗禾视频渠道图标（项目内置 SVG，避免引入额外依赖）。
+function SuiheIcon({ size = 14 }) {
+  return (
+    <svg
+      xmlns='http://www.w3.org/2000/svg'
+      width={size}
+      height={size}
+      viewBox='0 0 24 24'
+      fill='none'
+      aria-label='Suihe'
+    >
+      <rect width='24' height='24' rx='6' fill='#16A34A' />
+      <text
+        x='12'
+        y='16'
+        textAnchor='middle'
+        fontSize='12'
+        fontWeight='600'
+        fontFamily='-apple-system, BlinkMacSystemFont, "PingFang SC", sans-serif'
+        fill='#FFFFFF'
+      >
+        穗
+      </text>
+    </svg>
+  );
+}
+
 // 获取侧边栏Lucide图标组件
 export function getLucideIcon(key, selected = false) {
   const size = 16;
@@ -400,6 +427,8 @@ export function getChannelIcon(channelType) {
       return <Doubao.Color size={iconSize} />;
     case 56: // Replicate
       return <Replicate size={iconSize} />;
+    case 58: // 穗禾视频
+      return <SuiheIcon size={iconSize} />;
     case 8: // 自定义渠道
     case 22: // 知识库：FastGPT
       return <FastGPT.Color size={iconSize} />;
