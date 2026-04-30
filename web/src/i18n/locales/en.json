@@ -3675,4 +3675,11 @@
     "默认用户消息": "Default User Message",
     "默认补全倍率": "Default completion ratio"
   }
+,
+    "按秒": "Per second",
+    "按秒计费": "Pay per second",
+    "每秒价格": "Price per second",
+    "输入每秒价格": "Enter price per second",
+    "适合按运行时长、生成时长等维度收费的模型。": "Suitable for models billed by runtime, generation duration, and similar duration-based dimensions.",
+    "$/秒": "$/sec"
 }

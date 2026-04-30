@@ -4178,4 +4178,11 @@
     "默认用户消息": "Xin chào",
     "默认补全倍率": "Tỷ lệ hoàn thành mặc định"
   }
+,
+    "按秒": "Theo giây",
+    "按秒计费": "Tính phí theo giây",
+    "每秒价格": "Giá mỗi giây",
+    "输入每秒价格": "Nhập giá mỗi giây",
+    "适合按运行时长、生成时长等维度收费的模型。": "Phù hợp với các mô hình tính phí theo thời gian chạy, thời lượng tạo sinh và các chiều thời lượng tương tự.",
+    "$/秒": "$/giây"
 }

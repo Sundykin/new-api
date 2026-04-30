@@ -53,6 +53,26 @@ import { useIsMobile } from '../../../../hooks/common/useIsMobile';
 const { Text } = Typography;
 const EMPTY_CANDIDATE_MODEL_NAMES = [];
 
+const getBillingModeLabel = (billingMode, t) => {
+  if (billingMode === 'per-request') {
+    return t('按次计费');
+  }
+  if (billingMode === 'per-second') {
+    return t('按秒计费');
+  }
+  return t('按量计费');
+};
+
+const getBillingModeTagColor = (billingMode) => {
+  if (billingMode === 'per-request') {
+    return 'teal';
+  }
+  if (billingMode === 'per-second') {
+    return 'orange';
+  }
+  return 'violet';
+};
+
 const PriceInput = ({
   label,
   value,
@@ -175,10 +195,8 @@ export default function ModelPricingEditor({
         dataIndex: 'billingMode',
         key: 'billingMode',
         render: (_, record) => (
-          <Tag color={record.billingMode === 'per-request' ? 'teal' : 'violet'}>
-            {record.billingMode === 'per-request'
-              ? t('按次计费')
-              : t('按量计费')}
+          <Tag color={getBillingModeTagColor(record.billingMode)}>
+            {getBillingModeLabel(record.billingMode, t)}
           </Tag>
         ),
       },
@@ -354,9 +372,7 @@ export default function ModelPricingEditor({
             headerExtraContent={
               selectedModel ? (
                 <Tag color='blue'>
-                  {selectedModel.billingMode === 'per-request'
-                    ? t('按次计费')
-                    : t('按量计费')}
+                  {getBillingModeLabel(selectedModel.billingMode, t)}
                 </Tag>
               ) : null
             }
@@ -381,6 +397,7 @@ export default function ModelPricingEditor({
                   >
                     <Radio value='per-token'>{t('按量计费')}</Radio>
                     <Radio value='per-request'>{t('按次计费')}</Radio>
+                    <Radio value='per-second'>{t('按秒计费')}</Radio>
                   </RadioGroup>
                   <div className='mt-2 text-xs text-gray-500'>
                     {t(
@@ -406,14 +423,31 @@ export default function ModelPricingEditor({
                   </Card>
                 ) : null}
 
-                {selectedModel.billingMode === 'per-request' ? (
+                {selectedModel.billingMode === 'per-request' ||
+                selectedModel.billingMode === 'per-second' ? (
                   <PriceInput
-                    label={t('固定价格')}
+                    label={
+                      selectedModel.billingMode === 'per-second'
+                        ? t('每秒价格')
+                        : t('固定价格')
+                    }
                     value={selectedModel.fixedPrice}
-                    placeholder={t('输入每次调用价格')}
-                    suffix={t('$/次')}
+                    placeholder={
+                      selectedModel.billingMode === 'per-second'
+                        ? t('输入每秒价格')
+                        : t('输入每次调用价格')
+                    }
+                    suffix={
+                      selectedModel.billingMode === 'per-second'
+                        ? t('$/秒')
+                        : t('$/次')
+                    }
                     onChange={(value) => handleNumericFieldChange('fixedPrice', value)}
-                    extraText={t('适合 MJ / 任务类等按次收费模型。')}
+                    extraText={
+                      selectedModel.billingMode === 'per-second'
+                        ? t('适合按运行时长、生成时长等维度收费的模型。')
+                        : t('适合 MJ / 任务类等按次收费模型。')
+                    }
                   />
                 ) : (
                   <>

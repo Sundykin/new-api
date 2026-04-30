@@ -35,6 +35,12 @@ import { useIsMobile } from '../../../../../hooks/common/useIsMobile';
 
 function renderQuotaType(type, t) {
   switch (type) {
+    case 2:
+      return (
+        <Tag color='orange' shape='circle'>
+          {t('按秒计费')}
+        </Tag>
+      );
     case 1:
       return (
         <Tag color='teal' shape='circle'>

@@ -301,6 +301,7 @@ var defaultModelPrice = map[string]float64{
 	"mj_upscale":                     0.05,
 	"swap_face":                      0.05,
 	"mj_upload":                      0.05,
+	"grok-imagine-video":             0.1,
 	"sora-2":                         0.3,
 	"sora-2-pro":                     0.5,
 	"gpt-4o-mini-tts":                0.3,
@@ -329,6 +330,7 @@ var defaultAudioCompletionRatio = map[string]float64{
 }
 
 var modelPriceMap = types.NewRWMap[string, float64]()
+var modelPriceTypeMap = types.NewRWMap[string, int]()
 var modelRatioMap = types.NewRWMap[string, float64]()
 var completionRatioMap = types.NewRWMap[string, float64]()
 
@@ -355,12 +357,24 @@ func GetModelPriceMap() map[string]float64 {
 	return modelPriceMap.ReadAll()
 }
 
+func GetModelPriceTypeMap() map[string]int {
+	return modelPriceTypeMap.ReadAll()
+}
+
 func ModelPrice2JSONString() string {
 	return modelPriceMap.MarshalJSONString()
 }
 
+func ModelPriceType2JSONString() string {
+	return modelPriceTypeMap.MarshalJSONString()
+}
+
 func UpdateModelPriceByJSONString(jsonStr string) error {
 	return types.LoadFromJsonStringWithCallback(modelPriceMap, jsonStr, InvalidateExposedDataCache)
+}
+
+func UpdateModelPriceTypeByJSONString(jsonStr string) error {
+	return types.LoadFromJsonStringWithCallback(modelPriceTypeMap, jsonStr, InvalidateExposedDataCache)
 }
 
 // GetModelPrice 返回模型的价格，如果模型不存在则返回-1，false
@@ -386,6 +400,19 @@ func GetModelPrice(name string, printErr bool) (float64, bool) {
 		common.SysError("model price not found: " + name)
 	}
 	return -1, false
+}
+
+func GetModelPriceType(name string) int {
+	name = FormatMatchingModelName(name)
+	if quotaType, ok := modelPriceTypeMap.Get(name); ok {
+		return quotaType
+	}
+	if strings.HasSuffix(name, CompactModelSuffix) {
+		if quotaType, ok := modelPriceTypeMap.Get(CompactWildcardModelKey); ok {
+			return quotaType
+		}
+	}
+	return 1
 }
 
 func UpdateModelRatioByJSONString(jsonStr string) error {

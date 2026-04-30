@@ -77,6 +77,28 @@ const parseOptionJSON = (rawValue) => {
   }
 };
 
+const BILLING_MODE_PER_TOKEN = 'per-token';
+const BILLING_MODE_PER_REQUEST = 'per-request';
+const BILLING_MODE_PER_SECOND = 'per-second';
+
+const priceTypeToBillingMode = (value) => {
+  const type = Number(value);
+  if (type === 2) {
+    return BILLING_MODE_PER_SECOND;
+  }
+  return BILLING_MODE_PER_REQUEST;
+};
+
+const billingModeToPriceType = (billingMode) => {
+  if (billingMode === BILLING_MODE_PER_SECOND) {
+    return 2;
+  }
+  if (billingMode === BILLING_MODE_PER_REQUEST) {
+    return 1;
+  }
+  return null;
+};
+
 const ratioToBasePrice = (ratio) => {
   const num = toNumberOrNull(ratio);
   if (num === null) return '';
@@ -121,7 +143,9 @@ const buildModelState = (name, sourceMaps) => {
   return {
     ...EMPTY_MODEL,
     name,
-    billingMode: hasValue(fixedPrice) ? 'per-request' : 'per-token',
+    billingMode: hasValue(fixedPrice)
+      ? priceTypeToBillingMode(sourceMaps.ModelPriceType?.[name])
+      : BILLING_MODE_PER_TOKEN,
     fixedPrice,
     inputPrice,
     completionRatioLocked: completionRatioMeta.locked,
@@ -225,7 +249,7 @@ export const getModelWarnings = (model, t) => {
   }
 
   if (
-    model.billingMode === 'per-token' &&
+    model.billingMode === BILLING_MODE_PER_TOKEN &&
     hasDerivedPricing &&
     !hasValue(model.inputPrice)
   ) {
@@ -233,7 +257,7 @@ export const getModelWarnings = (model, t) => {
   }
 
   if (
-    model.billingMode === 'per-token' &&
+    model.billingMode === BILLING_MODE_PER_TOKEN &&
     hasValue(model.audioOutputPrice) &&
     !hasValue(model.audioInputPrice)
   ) {
@@ -244,8 +268,18 @@ export const getModelWarnings = (model, t) => {
 };
 
 export const buildSummaryText = (model, t) => {
-  if (model.billingMode === 'per-request' && hasValue(model.fixedPrice)) {
+  if (
+    model.billingMode === BILLING_MODE_PER_REQUEST &&
+    hasValue(model.fixedPrice)
+  ) {
     return `${t('按次')} $${model.fixedPrice} / ${t('次')}`;
+  }
+
+  if (
+    model.billingMode === BILLING_MODE_PER_SECOND &&
+    hasValue(model.fixedPrice)
+  ) {
+    return `${t('按秒')} $${model.fixedPrice} / ${t('秒')}`;
   }
 
   if (hasValue(model.inputPrice)) {
@@ -278,6 +312,7 @@ export const buildOptionalFieldToggles = (model) => ({
 const serializeModel = (model, t) => {
   const result = {
     ModelPrice: null,
+    ModelPriceType: null,
     ModelRatio: null,
     CompletionRatio: null,
     CacheRatio: null,
@@ -287,9 +322,13 @@ const serializeModel = (model, t) => {
     AudioCompletionRatio: null,
   };
 
-  if (model.billingMode === 'per-request') {
+  if (
+    model.billingMode === BILLING_MODE_PER_REQUEST ||
+    model.billingMode === BILLING_MODE_PER_SECOND
+  ) {
     if (hasValue(model.fixedPrice)) {
       result.ModelPrice = toNormalizedNumber(model.fixedPrice);
+      result.ModelPriceType = billingModeToPriceType(model.billingMode);
     }
     return result;
   }
@@ -396,12 +435,23 @@ const serializeModel = (model, t) => {
 export const buildPreviewRows = (model, t) => {
   if (!model) return [];
 
-  if (model.billingMode === 'per-request') {
+  if (
+    model.billingMode === BILLING_MODE_PER_REQUEST ||
+    model.billingMode === BILLING_MODE_PER_SECOND
+  ) {
     return [
       {
         key: 'ModelPrice',
         label: 'ModelPrice',
         value: hasValue(model.fixedPrice) ? model.fixedPrice : t('空'),
+      },
+      {
+        key: 'ModelPriceType',
+        label: 'ModelPriceType',
+        value:
+          model.billingMode === BILLING_MODE_PER_SECOND
+            ? t('按秒计费')
+            : t('按次计费'),
       },
     ];
   }
@@ -544,6 +594,7 @@ export function useModelPricingEditorState({
   useEffect(() => {
     const sourceMaps = {
       ModelPrice: parseOptionJSON(options.ModelPrice),
+      ModelPriceType: parseOptionJSON(options.ModelPriceType),
       ModelRatio: parseOptionJSON(options.ModelRatio),
       CompletionRatio: parseOptionJSON(options.CompletionRatio),
       CompletionRatioMeta: parseOptionJSON(options.CompletionRatioMeta),
@@ -857,7 +908,7 @@ export function useModelPricingEditorState({
         };
 
         if (
-          nextModel.billingMode === 'per-token' &&
+          nextModel.billingMode === BILLING_MODE_PER_TOKEN &&
           nextModel.completionRatioLocked &&
           hasValue(nextModel.inputPrice) &&
           hasValue(nextModel.lockedCompletionRatio)
@@ -906,6 +957,7 @@ export function useModelPricingEditorState({
     try {
       const output = {
         ModelPrice: {},
+        ModelPriceType: {},
         ModelRatio: {},
         CompletionRatio: {},
         CacheRatio: {},

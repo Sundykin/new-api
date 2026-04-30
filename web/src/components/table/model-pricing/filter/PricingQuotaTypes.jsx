@@ -22,7 +22,7 @@ import SelectableButtonGroup from '../../../common/ui/SelectableButtonGroup';
 
 /**
  * 计费类型筛选组件
- * @param {string|'all'|0|1} filterQuotaType 当前值
+ * @param {string|'all'|0|1|2} filterQuotaType 当前值
  * @param {Function} setFilterQuotaType setter
  * @param {Array} models 模型列表
  * @param {boolean} loading 是否加载中
@@ -43,6 +43,7 @@ const PricingQuotaTypes = ({
     { value: 'all', label: t('全部类型'), tagCount: qtyCount('all') },
     { value: 0, label: t('按量计费'), tagCount: qtyCount(0) },
     { value: 1, label: t('按次计费'), tagCount: qtyCount(1) },
+    { value: 2, label: t('按秒计费'), tagCount: qtyCount(2) },
   ];
 
   return (

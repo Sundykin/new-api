@@ -3644,4 +3644,11 @@
     "默认用户消息": "Bonjour",
     "默认补全倍率": "Taux de complétion par défaut"
   }
+,
+    "按秒": "Par seconde",
+    "按秒计费": "Paiement par seconde",
+    "每秒价格": "Prix par seconde",
+    "输入每秒价格": "Saisissez le prix par seconde",
+    "适合按运行时长、生成时长等维度收费的模型。": "Convient aux modèles facturés selon la durée d'exécution, la durée de génération et d'autres dimensions basées sur le temps.",
+    "$/秒": "$/s"
 }

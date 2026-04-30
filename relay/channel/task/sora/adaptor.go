@@ -24,6 +24,47 @@ import (
 	"github.com/tidwall/sjson"
 )
 
+var grokImagineVideoSupportedSeconds = map[int]struct{}{
+	6:  {},
+	10: {},
+	12: {},
+	16: {},
+	20: {},
+}
+
+func isGrokImagineVideoModel(model string) bool {
+	return strings.EqualFold(strings.TrimSpace(model), "grok-imagine-video")
+}
+
+func resolveRequestedSeconds(req relaycommon.TaskSubmitReq) int {
+	seconds, _ := strconv.Atoi(req.Seconds)
+	if seconds == 0 {
+		seconds = req.Duration
+	}
+	return seconds
+}
+
+func defaultSecondsByModel(model string) int {
+	if isGrokImagineVideoModel(model) {
+		return 6
+	}
+	return 4
+}
+
+func validateModelSpecificSeconds(req relaycommon.TaskSubmitReq) *dto.TaskError {
+	if !isGrokImagineVideoModel(req.Model) {
+		return nil
+	}
+	seconds := resolveRequestedSeconds(req)
+	if seconds <= 0 {
+		return nil
+	}
+	if _, ok := grokImagineVideoSupportedSeconds[seconds]; ok {
+		return nil
+	}
+	return service.TaskErrorWrapperLocal(fmt.Errorf("seconds must be one of [6, 10, 12, 16, 20]"), "invalid_request", http.StatusBadRequest)
+}
+
 // ============================
 // Request / Response structures
 // ============================
@@ -91,7 +132,14 @@ func (a *TaskAdaptor) ValidateRequestAndSetAction(c *gin.Context, info *relaycom
 	if info.Action == constant.TaskActionRemix {
 		return validateRemixRequest(c)
 	}
-	return relaycommon.ValidateMultipartDirect(c, info)
+	if taskErr := relaycommon.ValidateMultipartDirect(c, info); taskErr != nil {
+		return taskErr
+	}
+	req, err := relaycommon.GetTaskRequest(c)
+	if err != nil {
+		return service.TaskErrorWrapperLocal(err, "invalid_request", http.StatusBadRequest)
+	}
+	return validateModelSpecificSeconds(req)
 }
 
 // EstimateBilling 根据用户请求的 seconds 和 size 计算 OtherRatios。
@@ -111,7 +159,7 @@ func (a *TaskAdaptor) EstimateBilling(c *gin.Context, info *relaycommon.RelayInf
 		seconds = req.Duration
 	}
 	if seconds <= 0 {
-		seconds = 4
+		seconds = defaultSecondsByModel(req.Model)
 	}
 
 	size := req.Size

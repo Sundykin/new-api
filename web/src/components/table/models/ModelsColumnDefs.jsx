@@ -137,6 +137,13 @@ const renderQuotaTypes = (arr, t) => {
   return renderLimitedItems({
     items: arr,
     renderItem: (qt, idx) => {
+      if (qt === 2) {
+        return (
+          <Tag key={`${qt}-${idx}`} color='orange' size='small' shape='circle'>
+            {t('按秒计费')}
+          </Tag>
+        );
+      }
       if (qt === 1) {
         return (
           <Tag key={`${qt}-${idx}`} color='teal' size='small' shape='circle'>

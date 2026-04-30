@@ -73,6 +73,8 @@ const ModelPricingTable = ({
         billingType:
           modelData?.quota_type === 0
             ? t('按量计费')
+            : modelData?.quota_type === 2
+              ? t('按秒计费')
             : modelData?.quota_type === 1
               ? t('按次计费')
               : '-',
@@ -114,6 +116,7 @@ const ModelPricingTable = ({
       render: (text) => {
         let color = 'white';
         if (text === t('按量计费')) color = 'violet';
+        else if (text === t('按秒计费')) color = 'orange';
         else if (text === t('按次计费')) color = 'teal';
         return (
           <Tag color={color} size='small' shape='circle'>
