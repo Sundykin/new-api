@@ -31,3 +31,8 @@ data/
 .gopath
 
 token_estimator_test.go
+
+# 含七牛 AK/SK 与数据库密码，禁止入库
+docker-compose.dev.yml
+DEPLOY_QINIU.md
+*.bak

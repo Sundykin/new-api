@@ -66,6 +66,14 @@ func SetRelayRouter(router *gin.Engine) {
 	{
 		playgroundRouter.POST("/chat/completions", controller.Playground)
 	}
+	// 通用上传接口：使用 API key 鉴权，不消耗额度，记录日志
+	uploadRouter := router.Group("/v1/uploads")
+	uploadRouter.Use(middleware.RouteTag("relay"))
+	uploadRouter.Use(middleware.TokenAuth())
+	{
+		uploadRouter.POST("/image", controller.UploadImageToQiniu)
+	}
+
 	relayV1Router := router.Group("/v1")
 	relayV1Router.Use(middleware.RouteTag("relay"))
 	relayV1Router.Use(middleware.SystemPerformanceCheck())
