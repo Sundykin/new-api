@@ -71,7 +71,7 @@ func SetRelayRouter(router *gin.Engine) {
 	uploadRouter.Use(middleware.RouteTag("relay"))
 	uploadRouter.Use(middleware.TokenAuth())
 	{
-		uploadRouter.POST("/image", controller.UploadImageToQiniu)
+		uploadRouter.POST("/images", controller.UploadImageToQiniu)
 	}
 
 	relayV1Router := router.Group("/v1")
