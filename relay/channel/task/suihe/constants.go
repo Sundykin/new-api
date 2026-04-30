@@ -14,6 +14,9 @@ var ModelList = []string{
 // 缺省时长：穗禾约束 4~15 秒，未传时按 5 秒预扣费。
 const defaultDurationSeconds = 5
 
+// 当前阶段穗禾渠道仅放开 480p 档位；上游分辨率统一锁定为该值。
+const suiheLockedResolution = "480p"
+
 // 画质增强基准时长：增强按"每秒处理"计价，固定计 enhanceFixedSeconds × resolution × fps 倍率。
 // 5 秒为常见短视频基准；后续可通过 ModelRatio 端整体调节单价，无需改动适配器。
 const enhanceFixedSeconds = 5

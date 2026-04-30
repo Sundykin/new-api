@@ -76,18 +76,22 @@ func (a *TaskAdaptor) Init(info *relaycommon.RelayInfo) {
 	a.apiKey = info.ApiKey
 }
 
-// ValidateRequestAndSetAction 解析 multipart / json 请求体，校验 prompt，写入 task_request 上下文。
-// 行为与其他视频渠道（vidu / doubao / jimeng）一致，便于后续扩展辅助接口时复用同一通路。
+// ValidateRequestAndSetAction 解析请求体并写入 task_request 上下文。
 //
-// 当请求路径为 PathEnhance 时进入"画质增强"分支：
-//   - 不要求 prompt（增强任务作用于已有视频，无需提示词）；
+// 标准生成（POST /v1/videos 或 /suihe/v1/videos/generations）：对外只接 OpenAI 视频 API
+// 标准字段（prompt / model / seconds / size / input_reference），与 sora 等其它视频渠道一致；
+// 上游真正用到的 suihe 字段（duration / ratio / video_resolution / first_frame 等）由
+// BuildRequestBody 统一转换。复用 ValidateMultipartDirect 完成 prompt + model 校验。
+//
+// 画质增强（PathEnhance）走独立分支：
+//   - 不要求 prompt；
 //   - source_task_id 必填；
-//   - info.Action 设为 TaskActionEnhance，由 BuildRequestURL 与 BuildRequestBody 分流到 enhance 路径。
+//   - info.Action = TaskActionEnhance，由 BuildRequestURL/BuildRequestBody 分流到 enhance 路径。
 func (a *TaskAdaptor) ValidateRequestAndSetAction(c *gin.Context, info *relaycommon.RelayInfo) (taskErr *dto.TaskError) {
 	if isEnhanceRequest(c) {
 		return validateEnhanceRequest(c, info)
 	}
-	return relaycommon.ValidateBasicTaskRequest(c, info, constant.TaskActionGenerate)
+	return relaycommon.ValidateMultipartDirect(c, info)
 }
 
 // validateEnhanceRequest 解析画质增强请求体（JSON），校验 source_task_id，写入 task_request 上下文。
@@ -201,9 +205,17 @@ func (a *TaskAdaptor) BuildRequestHeader(c *gin.Context, req *http.Request, info
 	return nil
 }
 
-// BuildRequestBody 透传 multipart 请求体，并根据模型映射改写 model 字段。
-// 客户端的所有附加字段（function_mode / first_frame / frame_N / image_file_N / materials 等）
-// 原样转发到穗禾上游，避免在网关层硬编码任何模式判断。
+// BuildRequestBody 把 OpenAI 标准视频请求转换为穗禾上游文档定义的 multipart 字段。
+//
+// 输入（OpenAI 兼容，由 ValidateMultipartDirect 解析到 TaskSubmitReq）：
+//   - prompt / model / seconds / size / input_reference (file)
+//   - metadata: 透传到上游 suihe 文档里的扩展字段（function_mode / ratio / video_resolution /
+//     end_frame_url / channel / materials 等），便于客户端访问 suihe 高级模式。
+//
+// 输出（穗禾 /v1/videos/generations multipart）：
+//   - prompt / model / duration / video_resolution / ratio
+//   - first_frame：来源于 multipart 中的 input_reference 文件（如果有）
+//   - 其它扩展字段：透传 metadata 中的字符串值。
 //
 // 画质增强（TaskActionEnhance）走 JSON 分支，body 由 task_request.metadata 构造，
 // 字段：source_task_id、url_index、tool_version、scene、resolution、fps。
@@ -222,85 +234,132 @@ func (a *TaskAdaptor) BuildRequestBody(c *gin.Context, info *relaycommon.RelayIn
 		return bytes.NewReader(data), nil
 	}
 
-	contentType := c.Request.Header.Get("Content-Type")
-
-	// JSON 透传分支：在标准生成接口中并不走该分支，但保留以便扩展（例如未来支持 JSON 提交）。
-	if strings.HasPrefix(contentType, "application/json") {
-		storage, err := common.GetBodyStorage(c)
-		if err != nil {
-			return nil, errors.Wrap(err, "get_request_body_failed")
-		}
-		body, err := storage.Bytes()
-		if err != nil {
-			return nil, errors.Wrap(err, "read_body_bytes_failed")
-		}
-		var bodyMap map[string]any
-		if err := common.Unmarshal(body, &bodyMap); err == nil {
-			bodyMap["model"] = info.UpstreamModelName
-			if newBody, err := common.Marshal(bodyMap); err == nil {
-				return bytes.NewReader(newBody), nil
-			}
-		}
-		return bytes.NewReader(body), nil
-	}
-
-	if !strings.Contains(contentType, "multipart/form-data") {
-		return nil, fmt.Errorf("unsupported content-type: %s", contentType)
-	}
-
-	form, err := common.ParseMultipartFormReusable(c)
+	req, err := relaycommon.GetTaskRequest(c)
 	if err != nil {
-		return nil, errors.Wrap(err, "parse_multipart_failed")
+		return nil, errors.Wrap(err, "get_request_failed")
+	}
+
+	duration := req.Duration
+	if duration == 0 && req.Seconds != "" {
+		duration, _ = strconv.Atoi(req.Seconds)
+	}
+	if duration <= 0 {
+		duration = defaultDurationSeconds
+	}
+
+	_, ratio := mapOpenAISizeToSuihe(req.Size)
+	// 当前阶段穗禾渠道仅放开 480p 档位（与商务策略一致），上游分辨率统一锁定，
+	// 不接受 metadata.video_resolution 覆盖，避免越权选择更高码率。
+	resolution := suiheLockedResolution
+	if v := stringFromMetadata(req.Metadata, "ratio"); v != "" {
+		ratio = v
 	}
 
 	var buf bytes.Buffer
 	writer := multipart.NewWriter(&buf)
 
-	// 写入 model（使用上游映射后的模型名），其它文本字段原样透传。
-	if err := writer.WriteField("model", info.UpstreamModelName); err != nil {
-		return nil, errors.Wrap(err, "write_model_field_failed")
+	if err := writer.WriteField("prompt", req.Prompt); err != nil {
+		return nil, errors.Wrap(err, "write_prompt_failed")
 	}
-	for key, values := range form.Value {
-		if key == "model" {
+	if err := writer.WriteField("model", info.UpstreamModelName); err != nil {
+		return nil, errors.Wrap(err, "write_model_failed")
+	}
+	if err := writer.WriteField("duration", strconv.Itoa(duration)); err != nil {
+		return nil, errors.Wrap(err, "write_duration_failed")
+	}
+	if resolution != "" {
+		_ = writer.WriteField("video_resolution", resolution)
+	}
+	if ratio != "" {
+		_ = writer.WriteField("ratio", ratio)
+	}
+
+	// 透传 metadata 里的扩展字段：function_mode / channel / materials / end_frame_url 等。
+	// 已显式映射的字段（video_resolution / ratio）在上面已处理，这里跳过。
+	for key, value := range req.Metadata {
+		switch key {
+		case "video_resolution", "ratio", "duration", "prompt", "model":
 			continue
 		}
-		for _, v := range values {
-			if err := writer.WriteField(key, v); err != nil {
-				return nil, errors.Wrap(err, "write_form_field_failed")
+		if value == nil {
+			continue
+		}
+		// metadata 仅透传字符串/数值类型，复杂结构（map/数组）需要 JSON 序列化。
+		switch v := value.(type) {
+		case string:
+			if v != "" {
+				_ = writer.WriteField(key, v)
+			}
+		case int, int64, float64, bool:
+			_ = writer.WriteField(key, fmt.Sprint(v))
+		default:
+			if encoded, err := common.Marshal(v); err == nil {
+				_ = writer.WriteField(key, string(encoded))
 			}
 		}
 	}
 
-	// 文件字段：保留原始 filename / content-type，逐个 part 复制。
-	for fieldName, fileHeaders := range form.File {
-		for _, fh := range fileHeaders {
-			f, err := fh.Open()
-			if err != nil {
-				continue
-			}
-			ct := fh.Header.Get("Content-Type")
-			if ct == "" || ct == "application/octet-stream" {
-				sniff := make([]byte, 512)
-				n, _ := io.ReadFull(f, sniff)
-				ct = http.DetectContentType(sniff[:n])
-				f.Close()
-				f, err = fh.Open()
-				if err != nil {
-					continue
+	// 把客户端 multipart 中的 input_reference 文件改名为 suihe 文档里的 first_frame，
+	// 与 OpenAI 视频 API 中"参考图首帧"的语义一致。
+	if strings.HasPrefix(c.Request.Header.Get("Content-Type"), "multipart/form-data") {
+		if form, err := common.ParseMultipartFormReusable(c); err == nil {
+			if files := form.File["input_reference"]; len(files) > 0 {
+				if err := writeMultipartFile(writer, "first_frame", files[0]); err != nil {
+					return nil, errors.Wrap(err, "write_first_frame_failed")
 				}
 			}
-			h := make(textproto.MIMEHeader)
-			h.Set("Content-Disposition", fmt.Sprintf(`form-data; name="%s"; filename="%s"`, fieldName, fh.Filename))
-			h.Set("Content-Type", ct)
-			part, err := writer.CreatePart(h)
-			if err != nil {
-				f.Close()
-				continue
+			// 客户端在多帧/全能引用模式下可直接以 suihe 文档命名上传文件
+			// （end_frame、frame_1、image_file_1、video_file_1、audio_file_1 等），透传不改名。
+			for fieldName, fhs := range form.File {
+				if fieldName == "input_reference" {
+					continue
+				}
+				for _, fh := range fhs {
+					if err := writeMultipartFile(writer, fieldName, fh); err != nil {
+						return nil, errors.Wrap(err, "write_extra_file_failed")
+					}
+				}
 			}
-			_, _ = io.Copy(part, f)
-			f.Close()
 		}
 	}
+
+	// JSON 提交路径下，OpenAI 标准用 input_reference / images: [url] 表达首帧/参考图。
+	// 穗禾上游只接 multipart 文件，网关在此把 URL 拉下来转成 multipart part。
+	// 字段命名按 metadata.function_mode 分流（与 suihe 文档对齐）：
+	//
+	//   omni_reference   →  全部 images 都是 image_file_1, image_file_2, ...
+	//                      （全能引用：每张图都是参考素材，没有"首帧"概念）
+	//   multi_frame      →  images[0] = first_frame, images[1..] = frame_1, frame_2, ...
+	//   first_last_frames →  images[0] = first_frame；end_frame 走 metadata.end_frame_url 透传
+	//   first_frame / 其他 →  默认：images[0] = first_frame, images[1..] = frame_1, frame_2, ...
+	//
+	// 上游对字段名的语义敏感：function_mode=omni_reference 但字段是 first_frame/frame_N，
+	// 上游会按多帧模式处理（只看 first_frame，剩下的引导帧），导致客户端"全能引用"语义丢失。
+	imageURLs := collectImageURLs(req)
+	if len(imageURLs) > 0 {
+		functionMode := stringFromMetadata(req.Metadata, "function_mode")
+		switch functionMode {
+		case "omni_reference":
+			for i, u := range imageURLs {
+				fieldName := fmt.Sprintf("image_file_%d", i+1)
+				if err := writeRemoteImageAsPart(writer, fieldName, u); err != nil {
+					return nil, errors.Wrapf(err, "fetch_%s_failed", fieldName)
+				}
+			}
+		default:
+			// first_frame / multi_frame / first_last_frames / 未声明：保持原默认行为
+			if err := writeRemoteImageAsPart(writer, "first_frame", imageURLs[0]); err != nil {
+				return nil, errors.Wrap(err, "fetch_first_frame_failed")
+			}
+			for i, u := range imageURLs[1:] {
+				fieldName := fmt.Sprintf("frame_%d", i+1)
+				if err := writeRemoteImageAsPart(writer, fieldName, u); err != nil {
+					return nil, errors.Wrapf(err, "fetch_%s_failed", fieldName)
+				}
+			}
+		}
+	}
+
 	if err := writer.Close(); err != nil {
 		return nil, errors.Wrap(err, "close_multipart_writer_failed")
 	}
@@ -308,8 +367,203 @@ func (a *TaskAdaptor) BuildRequestBody(c *gin.Context, info *relaycommon.RelayIn
 	return &buf, nil
 }
 
+// collectImageURLs 汇总 OpenAI 标准请求中的远程图片 URL（input_reference / images），
+// 调用方按顺序映射为 first_frame、frame_1、frame_2... 上传给穗禾上游。
+//
+// 仅识别 http(s) 协议；data URI 与本地文件不在此处处理（multipart 文件路径已覆盖）。
+func collectImageURLs(req relaycommon.TaskSubmitReq) []string {
+	out := make([]string, 0, len(req.Images)+1)
+	seen := make(map[string]struct{}, len(req.Images)+1)
+	add := func(u string) {
+		u = strings.TrimSpace(u)
+		if u == "" {
+			return
+		}
+		if !strings.HasPrefix(u, "http://") && !strings.HasPrefix(u, "https://") {
+			return
+		}
+		if _, dup := seen[u]; dup {
+			return
+		}
+		seen[u] = struct{}{}
+		out = append(out, u)
+	}
+	add(req.InputReference)
+	for _, u := range req.Images {
+		add(u)
+	}
+	add(req.Image)
+	return out
+}
+
+// writeRemoteImageAsPart 拉取远程图片，按 multipart part 名称写入到上游请求体。
+//
+// 设计权衡：
+//   - 直接走默认 http.Client（无代理），与图床服务（七牛云 OSS 等）走公网最直接；
+//   - 加 30s 超时，避免恶意/慢速图床拖死整个上游链路；
+//   - Content-Type 优先取响应头，否则走前 512 字节嗅探；
+//   - filename 取 URL 末段，没有时回退到 fieldName + 推导后缀。
+func writeRemoteImageAsPart(writer *multipart.Writer, fieldName, imageURL string) error {
+	httpReq, err := http.NewRequest(http.MethodGet, imageURL, nil)
+	if err != nil {
+		return errors.Wrap(err, "new_http_request_failed")
+	}
+	client := &http.Client{Timeout: 30 * time.Second}
+	resp, err := client.Do(httpReq)
+	if err != nil {
+		return errors.Wrap(err, "fetch_image_failed")
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
+		return fmt.Errorf("fetch image returned http %d", resp.StatusCode)
+	}
+
+	// 读出首段用于 Content-Type 嗅探（响应头未给出时），再拼回完整字节。
+	const sniffLen = 512
+	head := make([]byte, sniffLen)
+	n, _ := io.ReadFull(resp.Body, head)
+	head = head[:n]
+	rest, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return errors.Wrap(err, "read_image_body_failed")
+	}
+	body := append(head, rest...)
+
+	ct := resp.Header.Get("Content-Type")
+	if ct == "" || strings.HasPrefix(ct, "application/octet-stream") {
+		ct = http.DetectContentType(head)
+	}
+
+	filename := guessFilenameFromURL(imageURL, fieldName, ct)
+
+	h := make(textproto.MIMEHeader)
+	h.Set("Content-Disposition", fmt.Sprintf(`form-data; name="%s"; filename="%s"`, fieldName, filename))
+	h.Set("Content-Type", ct)
+	part, err := writer.CreatePart(h)
+	if err != nil {
+		return errors.Wrap(err, "create_multipart_part_failed")
+	}
+	if _, err := part.Write(body); err != nil {
+		return errors.Wrap(err, "copy_image_to_part_failed")
+	}
+	return nil
+}
+
+// guessFilenameFromURL 从 URL 末段提取文件名；缺失时按 Content-Type 推导后缀。
+func guessFilenameFromURL(rawURL, fieldName, contentType string) string {
+	tail := rawURL
+	if idx := strings.LastIndex(tail, "?"); idx >= 0 {
+		tail = tail[:idx]
+	}
+	if idx := strings.LastIndex(tail, "/"); idx >= 0 {
+		tail = tail[idx+1:]
+	}
+	if tail != "" && strings.Contains(tail, ".") {
+		return tail
+	}
+	ext := ".bin"
+	switch {
+	case strings.Contains(contentType, "png"):
+		ext = ".png"
+	case strings.Contains(contentType, "jpeg"), strings.Contains(contentType, "jpg"):
+		ext = ".jpg"
+	case strings.Contains(contentType, "webp"):
+		ext = ".webp"
+	case strings.Contains(contentType, "gif"):
+		ext = ".gif"
+	}
+	return fieldName + ext
+}
+
+// writeMultipartFile 把上传文件原样写入新的 multipart writer（保留 filename + Content-Type）。
+func writeMultipartFile(writer *multipart.Writer, fieldName string, fh *multipart.FileHeader) error {
+	f, err := fh.Open()
+	if err != nil {
+		return err
+	}
+	defer f.Close()
+
+	ct := fh.Header.Get("Content-Type")
+	if ct == "" || ct == "application/octet-stream" {
+		sniff := make([]byte, 512)
+		n, _ := io.ReadFull(f, sniff)
+		ct = http.DetectContentType(sniff[:n])
+		// 嗅探后重新打开，确保完整内容被复制。
+		f.Close()
+		f, err = fh.Open()
+		if err != nil {
+			return err
+		}
+		defer f.Close()
+	}
+
+	h := make(textproto.MIMEHeader)
+	h.Set("Content-Disposition", fmt.Sprintf(`form-data; name="%s"; filename="%s"`, fieldName, fh.Filename))
+	h.Set("Content-Type", ct)
+	part, err := writer.CreatePart(h)
+	if err != nil {
+		return err
+	}
+	_, err = io.Copy(part, f)
+	return err
+}
+
+// mapOpenAISizeToSuihe 把 OpenAI 视频 API 的 size 字段（"WxH"，如 "720x1280"、"1280x720"、
+// "1920x1080" 等）拆解为 suihe 文档要求的 video_resolution + ratio。
+//
+// 解析规则：
+//   - 以最大边判分辨率：≤ 720 → 720p，≤ 1080 → 1080p，更大走 1080p（按文档推断）。
+//   - 比例使用最小公约数化简：1280:720 → 16:9，720:1280 → 9:16，1024:1024 → 1:1。
+//
+// 解析失败时（空值或非法格式）返回空串，让上游沿用其默认值。
+func mapOpenAISizeToSuihe(size string) (resolution, ratio string) {
+	parts := strings.Split(strings.TrimSpace(size), "x")
+	if len(parts) != 2 {
+		return "", ""
+	}
+	w, _ := strconv.Atoi(strings.TrimSpace(parts[0]))
+	h, _ := strconv.Atoi(strings.TrimSpace(parts[1]))
+	if w <= 0 || h <= 0 {
+		return "", ""
+	}
+	maxDim := w
+	if h > w {
+		maxDim = h
+	}
+	switch {
+	case maxDim <= 720:
+		resolution = "720p"
+	default:
+		resolution = "1080p"
+	}
+	g := gcd(w, h)
+	if g > 0 {
+		ratio = fmt.Sprintf("%d:%d", w/g, h/g)
+	}
+	return
+}
+
+func gcd(a, b int) int {
+	if a < 0 {
+		a = -a
+	}
+	if b < 0 {
+		b = -b
+	}
+	for b != 0 {
+		a, b = b, a%b
+	}
+	return a
+}
+
 func (a *TaskAdaptor) DoRequest(c *gin.Context, info *relaycommon.RelayInfo, requestBody io.Reader) (*http.Response, error) {
-	return channel.DoTaskApiRequest(a, c, info, requestBody)
+	resp, err := channel.DoTaskApiRequest(a, c, info, requestBody)
+	// 穗禾上游对异步任务提交按规范返回 202 Accepted；framework 仅以 200 视为成功，
+	// 这里把 2xx 统一收敛为 200，确保 DoResponse 能解析 task_id 而不是被包成 fail_to_fetch_task。
+	if err == nil && resp != nil && resp.StatusCode >= 200 && resp.StatusCode < 300 {
+		resp.StatusCode = http.StatusOK
+	}
+	return resp, err
 }
 
 // DoResponse 解析上游提交响应并返回上游 task_id。
@@ -571,6 +825,8 @@ func intFromMetadata(meta map[string]any, key string) int {
 // resolutionRatio 将增强目标分辨率折算为计费倍率（以 1080p 为基准 1.0）。
 func resolutionRatio(res string) float64 {
 	switch strings.ToLower(strings.TrimSpace(res)) {
+	case "480p":
+		return 0.3
 	case "720p":
 		return 0.5
 	case "1080p", "":

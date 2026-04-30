@@ -3,6 +3,7 @@ package controller
 import (
 	"fmt"
 	"net/http"
+	"strconv"
 	"time"
 
 	"github.com/QuantumNous/new-api/common"
@@ -103,6 +104,34 @@ func init() {
 		adaptor := relay.GetAdaptor(apiType)
 		adaptor.Init(meta)
 		channelId2Models[i] = adaptor.GetModelList()
+	}
+	// 兜底：纯 task 渠道（如 suihe）没有 APIType 映射，无法走上面的常规适配器路径，
+	// 这里再用 TaskAdaptor 注册一遍默认模型，避免管理端创建渠道时下拉为空。
+	for i := 1; i <= constant.ChannelTypeDummy; i++ {
+		if _, exists := channelId2Models[i]; exists {
+			continue
+		}
+		taskAdaptor := relay.GetTaskAdaptor(constant.TaskPlatform(strconv.Itoa(i)))
+		if taskAdaptor == nil {
+			continue
+		}
+		taskAdaptor.Init(&relaycommon.RelayInfo{ChannelMeta: &relaycommon.ChannelMeta{
+			ChannelType: i,
+		}})
+		models := taskAdaptor.GetModelList()
+		if len(models) == 0 {
+			continue
+		}
+		channelId2Models[i] = models
+		ownedBy := taskAdaptor.GetChannelName()
+		for _, modelName := range models {
+			openAIModels = append(openAIModels, dto.OpenAIModels{
+				Id:      modelName,
+				Object:  "model",
+				Created: 1626777600,
+				OwnedBy: ownedBy,
+			})
+		}
 	}
 	openAIModels = lo.UniqBy(openAIModels, func(m dto.OpenAIModels) string {
 		return m.Id
