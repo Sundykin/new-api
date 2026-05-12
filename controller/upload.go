@@ -23,8 +23,10 @@ import (
 	"github.com/google/uuid"
 )
 
-// 允许的图片扩展名
-var qiniuAllowedImageExt = map[string]bool{
+// 允许的文件扩展名（图片 / 音频 / 视频）
+// 路由保持不变（/v1/uploads/images），仅扩展白名单。
+var qiniuAllowedExt = map[string]bool{
+	// 图片
 	".jpg":  true,
 	".jpeg": true,
 	".png":  true,
@@ -33,13 +35,44 @@ var qiniuAllowedImageExt = map[string]bool{
 	".bmp":  true,
 	".svg":  true,
 	".heic": true,
+	".heif": true,
 	".ico":  true,
+	".tif":  true,
+	".tiff": true,
+	".avif": true,
+	// 音频
+	".mp3":  true,
+	".wav":  true,
+	".ogg":  true,
+	".oga":  true,
+	".m4a":  true,
+	".aac":  true,
+	".flac": true,
+	".opus": true,
+	".amr":  true,
+	".wma":  true,
+	".weba": true,
+	// 视频
+	".mp4":  true,
+	".m4v":  true,
+	".mov":  true,
+	".webm": true,
+	".mkv":  true,
+	".avi":  true,
+	".flv":  true,
+	".wmv":  true,
+	".3gp":  true,
+	".3g2":  true,
+	".mpeg": true,
+	".mpg":  true,
+	".ts":   true,
 }
 
-// UploadImageToQiniu 通用图片上传接口：
+// UploadImageToQiniu 通用文件上传接口（图片 / 音频 / 视频）：
 //   - 通过 TokenAuth 中间件完成 API Key 鉴权
 //   - 不消耗用户额度，仅通过 model.RecordLog 记录使用日志
 //   - 文件存储到七牛云 Kodo（OSS）
+//   - 接口路径保持 /v1/uploads/images 不变，仅扩展受理的文件类型
 //
 // 所需环境变量：
 //
@@ -90,10 +123,10 @@ func UploadImageToQiniu(c *gin.Context) {
 	}
 
 	ext := strings.ToLower(filepath.Ext(fileHeader.Filename))
-	if !qiniuAllowedImageExt[ext] {
+	if !qiniuAllowedExt[ext] {
 		c.JSON(http.StatusBadRequest, gin.H{
 			"success": false,
-			"message": "不支持的图片格式: " + ext,
+			"message": "不支持的文件格式: " + ext,
 		})
 		return
 	}
@@ -180,7 +213,7 @@ func UploadImageToQiniu(c *gin.Context) {
 
 	tokenId := c.GetInt("token_id")
 	tokenName := c.GetString("token_name")
-	content := fmt.Sprintf("七牛云图片上传成功 key=%s size=%d token_id=%d token_name=%s",
+	content := fmt.Sprintf("七牛云文件上传成功 key=%s size=%d token_id=%d token_name=%s",
 		key, fileHeader.Size, tokenId, tokenName)
 	model.RecordLog(userId, model.LogTypeSystem, content)
 
