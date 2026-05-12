@@ -70,7 +70,7 @@ if [ "$FORCE_REBUILD" = "1" ] || [ ! -s "$LOCAL_TAR" ]; then
     --output "type=docker,dest=$LOCAL_TAR" \
     .
 else
-  echo "已存在 $LOCAL_TAR（用 --rebuild 强制重建）"
+  echo "已存在 ${LOCAL_TAR}（用 --rebuild 强制重建）"
 fi
 ls -lh "$LOCAL_TAR"
 
@@ -87,7 +87,7 @@ ssh "$SSH_HOST" "set -e
 
 # ==== 4. （可选）更新 QINIU_MAX_UPLOAD_SIZE_MB ====
 if [ -n "$SIZE_LIMIT" ]; then
-  step "[4/5] 更新 QINIU_MAX_UPLOAD_SIZE_MB=$SIZE_LIMIT（仅替换该行）"
+  step "[4/5] 更新 QINIU_MAX_UPLOAD_SIZE_MB=${SIZE_LIMIT}（仅替换该行）"
   case "$SIZE_LIMIT" in *[!0-9]*) die "--size-limit 必须是正整数：$SIZE_LIMIT" ;; esac
   ssh "$SSH_HOST" "set -e
     cd '$COMPOSE_DIR'
