@@ -16,20 +16,25 @@ import (
 	"github.com/gin-gonic/gin"
 )
 
-// 穗禾辅助接口反向代理。
+// Koma 即梦辅助接口反向代理。
 //
 // 这些接口（余额 / 流水 / 模型列表 / 渠道配置 / 任务列表 / 素材库 / 健康检查）
-// 是无状态查询，不计费、不写入本地任务表，由网关用用户对应的穗禾渠道转发到上游。
+// 是无状态查询，不计费、不写入本地任务表，由网关用用户对应的Koma 即梦渠道转发到上游。
 //
-// 用户素材自管能力来自上游：每个穗禾渠道（channel）持有独立的 API Key；
+// 用户素材自管能力来自上游：每个Koma 即梦渠道（channel）持有独立的 API Key；
 // 用户为自己的渠道注册令牌后，所有素材读写都自动隔离在该 Key 的命名空间下。
 //
 // 通道选择优先级：
-//  1. Token 绑定的特定渠道（ContextKeyTokenSpecificChannelId，且类型为穗禾）；
-//  2. 请求头 X-Suihe-Channel-Id（管理端调试 / 多账号切换）；
-//  3. 全局首个启用状态的穗禾渠道（兜底）。
+//  1. Token 绑定的特定渠道（ContextKeyTokenSpecificChannelId，且类型为 Koma 即梦）；
+//  2. 请求头 X-Koma-Jimeng-Channel-Id（管理端调试 / 多账号切换），X-Suihe-Channel-Id 为历史别名；
+//  3. 全局首个启用状态的 Koma 即梦渠道（兜底）。
 
-const suiheChannelHeader = "X-Suihe-Channel-Id"
+// 渠道选择 header：优先 X-Koma-Jimeng-Channel-Id（对外正式名），
+// X-Suihe-Channel-Id 作为历史别名继续兼容旧客户端。
+const (
+	komaJimengChannelHeader = "X-Koma-Jimeng-Channel-Id"
+	suiheChannelHeader      = "X-Suihe-Channel-Id"
+)
 
 // SuiheBalance 转发 GET /v1/balance。
 func SuiheBalance(c *gin.Context) {
@@ -54,17 +59,17 @@ func SuiheChannels(c *gin.Context) {
 // SuiheTasksList 处理 POST /v1/tasks/list。
 //
 // 不再走上游反向代理：上游的 task_id 与网关分发给客户端的 task_xxxx 格式不一致，
-// 直接转发会导致用户看不到自己提交的任务。改为从本地任务表读取该用户在穗禾渠道下的
-// 全部任务，并按穗禾文档的 { items, total } 结构返回。
+// 直接转发会导致用户看不到自己提交的任务。改为从本地任务表读取该用户在Koma 即梦渠道下的
+// 全部任务，并按Koma 即梦文档的 { items, total } 结构返回。
 //
-// 请求体（与穗禾文档一致）：
+// 请求体（与Koma 即梦文档一致）：
 //
 //	{ "page": 1, "page_size": 20, "status": "success" }
 //
 // 字段说明：
 //   - page          页码，默认 1
 //   - page_size     每页条数，默认 20，最大 200
-//   - status        可选；接受穗禾枚举（success / failed / pending / submitted / generating / post_processing）
+//   - status        可选；接受Koma 即梦枚举（success / failed / pending / submitted / generating / post_processing）
 //     或本地枚举（QUEUED / IN_PROGRESS / SUCCESS / FAILURE）
 func SuiheTasksList(c *gin.Context) {
 	var req struct {
@@ -116,12 +121,12 @@ func SuiheTasksList(c *gin.Context) {
 	})
 }
 
-// mapTaskToSuiheSummary 将本地任务记录映射为穗禾任务摘要。
+// mapTaskToSuiheSummary 将本地任务记录映射为Koma 即梦任务摘要。
 //
-// 字段映射（左：本地 → 右：穗禾）：
+// 字段映射（左：本地 → 右：Koma 即梦）：
 //
 //	task_id（本地公开 task_xxxx）→ task_id
-//	Status                       → status（穗禾枚举）
+//	Status                       → status（Koma 即梦枚举）
 //	Properties.OriginModelName   → model
 //	Action                       → task_type（generate / enhance）
 //	SubmitTime                   → created_at（Unix 秒）
@@ -215,7 +220,7 @@ func parseProgressPercent(s string) int {
 	return n
 }
 
-// localStatusToSuihe 把本地 TaskStatus 映射为穗禾对外枚举。
+// localStatusToSuihe 把本地 TaskStatus 映射为Koma 即梦对外枚举。
 func localStatusToSuihe(s model.TaskStatus) string {
 	switch s {
 	case model.TaskStatusSubmitted:
@@ -235,7 +240,7 @@ func localStatusToSuihe(s model.TaskStatus) string {
 }
 
 // suiheStatusToLocal 把客户端传入的状态过滤词归一化到本地 TaskStatus。
-// 同时接受穗禾枚举与本地枚举（大小写不敏感），无法识别时返回空（不过滤）。
+// 同时接受Koma 即梦枚举与本地枚举（大小写不敏感），无法识别时返回空（不过滤）。
 func suiheStatusToLocal(input string) string {
 	v := strings.ToLower(strings.TrimSpace(input))
 	switch v {
@@ -265,7 +270,7 @@ func suiheStatusToLocal(input string) string {
 	return ""
 }
 
-// taskActionToSuiheType 把内部 TaskAction 映射为穗禾文档的 task_type 字段。
+// taskActionToSuiheType 把内部 TaskAction 映射为Koma 即梦文档的 task_type 字段。
 func taskActionToSuiheType(action string) string {
 	switch action {
 	case constant.TaskActionEnhance:
@@ -286,7 +291,7 @@ func taskActionToSuiheType(action string) string {
 
 // SuiheTaskDetail 处理 GET /v1/tasks/{task_id}。
 //
-// 与任务列表一致，从本地任务表读取并按穗禾摘要结构返回，避免 task_xxxx 与上游 UUID
+// 与任务列表一致，从本地任务表读取并按Koma 即梦摘要结构返回，避免 task_xxxx 与上游 UUID
 // 不一致。本地无该任务（可能是从外部端点直接提交、未走网关）时回退到反向代理。
 func SuiheTaskDetail(c *gin.Context) {
 	taskID := strings.TrimSpace(c.Param("task_id"))
@@ -423,10 +428,10 @@ func doSuiheRequest(c *gin.Context, channel *model.Channel, req *http.Request) {
 	_, _ = io.Copy(c.Writer, resp.Body)
 }
 
-// selectSuiheChannel 按以下优先级解析穗禾渠道：
+// selectSuiheChannel 按以下优先级解析Koma 即梦渠道：
 //  1. Token 绑定的特定渠道；
 //  2. X-Suihe-Channel-Id 请求头；
-//  3. 任意启用状态的穗禾渠道。
+//  3. 任意启用状态的Koma 即梦渠道。
 func selectSuiheChannel(c *gin.Context) (*model.Channel, error) {
 	if v, ok := common.GetContextKey(c, constant.ContextKeyTokenSpecificChannelId); ok {
 		if id, err := strconv.Atoi(fmt.Sprint(v)); err == nil {
@@ -435,10 +440,15 @@ func selectSuiheChannel(c *gin.Context) (*model.Channel, error) {
 			}
 		}
 	}
-	if header := strings.TrimSpace(c.GetHeader(suiheChannelHeader)); header != "" {
+	// 优先读新 header；为旧客户端保留 X-Suihe-Channel-Id 别名。
+	header := strings.TrimSpace(c.GetHeader(komaJimengChannelHeader))
+	if header == "" {
+		header = strings.TrimSpace(c.GetHeader(suiheChannelHeader))
+	}
+	if header != "" {
 		id, err := strconv.Atoi(header)
 		if err != nil {
-			return nil, errors.New("invalid_suihe_channel_id_header")
+			return nil, errors.New("invalid_koma_jimeng_channel_id_header")
 		}
 		ch, err := loadEnabledSuiheChannel(id)
 		if err != nil {

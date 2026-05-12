@@ -1,20 +1,20 @@
 package suihe
 
-// ChannelName 用于 task 平台标识、日志与配置项。
+// ChannelName 用于 task 平台标识、日志与配置项（内部 ID，不暴露给客户端）。
+// 历史包名/标识使用 "suihe"，对外展示名见 constant.ChannelTypeNames[ChannelTypeSuihe] = "KomaJimeng"。
 const ChannelName = "suihe"
 
 // 默认模型列表，可在管理端按需扩展。
-// 文档示例为 seedance 系列；穗禾后端实际暴露的模型可通过 GET /v1/models 拉取，
-// 此处仅作为创建渠道时的初始模型集合。
+// Koma 即梦上游实际暴露的模型可通过 GET /v1/models 拉取，此处仅作为创建渠道时的初始模型集合。
 var ModelList = []string{
 	"seedance-2.0",
 	"seedance-2.0-fast",
 }
 
-// 缺省时长：穗禾约束 4~15 秒，未传时按 5 秒预扣费。
+// 缺省时长：Koma 即梦约束 4~15 秒，未传时按 5 秒预扣费。
 const defaultDurationSeconds = 5
 
-// 当前阶段穗禾渠道仅放开 480p 档位；上游分辨率统一锁定为该值。
+// 当前阶段 Koma 即梦渠道仅放开 480p 档位；上游分辨率统一锁定为该值。
 const suiheLockedResolution = "480p"
 
 // 画质增强基准时长：增强按"每秒处理"计价，固定计 enhanceFixedSeconds × resolution × fps 倍率。

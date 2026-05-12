@@ -144,7 +144,7 @@ func isEnhanceRequest(c *gin.Context) bool {
 
 // EstimateBilling 返回按秒计费倍率。
 //
-// 标准生成任务：穗禾 duration 字段范围 4~15 秒（缺省 5 秒）。
+// 标准生成任务：Koma 即梦 duration 字段范围 4~15 秒（缺省 5 秒）。
 // 画质增强任务：固定按 enhanceFixedSeconds 计费，仅取决于源视频长度的折算系数；
 // 同时根据 resolution / fps 调整倍率，便于管理员单独配置每"秒-1080p-30fps"的基价。
 //
@@ -205,14 +205,14 @@ func (a *TaskAdaptor) BuildRequestHeader(c *gin.Context, req *http.Request, info
 	return nil
 }
 
-// BuildRequestBody 把 OpenAI 标准视频请求转换为穗禾上游文档定义的 multipart 字段。
+// BuildRequestBody 把 OpenAI 标准视频请求转换为 Koma 即梦上游文档定义的 multipart 字段。
 //
 // 输入（OpenAI 兼容，由 ValidateMultipartDirect 解析到 TaskSubmitReq）：
 //   - prompt / model / seconds / size / input_reference (file)
-//   - metadata: 透传到上游 suihe 文档里的扩展字段（function_mode / ratio / video_resolution /
-//     end_frame_url / channel / materials 等），便于客户端访问 suihe 高级模式。
+//   - metadata: 透传到上游 Koma 即梦文档里的扩展字段（function_mode / ratio / video_resolution /
+//     end_frame_url / channel / materials / image_urls / video_urls / audio_urls 等）。
 //
-// 输出（穗禾 /v1/videos/generations multipart）：
+// 输出（Koma 即梦 /v1/videos/generations multipart）：
 //   - prompt / model / duration / video_resolution / ratio
 //   - first_frame：来源于 multipart 中的 input_reference 文件（如果有）
 //   - 其它扩展字段：透传 metadata 中的字符串值。
@@ -248,7 +248,7 @@ func (a *TaskAdaptor) BuildRequestBody(c *gin.Context, info *relaycommon.RelayIn
 	}
 
 	_, ratio := mapOpenAISizeToSuihe(req.Size)
-	// 当前阶段穗禾渠道仅放开 480p 档位（与商务策略一致），上游分辨率统一锁定，
+	// 当前阶段Koma 即梦渠道仅放开 480p 档位（与商务策略一致），上游分辨率统一锁定，
 	// 不接受 metadata.video_resolution 覆盖，避免越权选择更高码率。
 	resolution := suiheLockedResolution
 	if v := stringFromMetadata(req.Metadata, "ratio"); v != "" {
@@ -276,9 +276,12 @@ func (a *TaskAdaptor) BuildRequestBody(c *gin.Context, info *relaycommon.RelayIn
 
 	// 透传 metadata 里的扩展字段：function_mode / channel / materials / end_frame_url 等。
 	// 已显式映射的字段（video_resolution / ratio）在上面已处理，这里跳过。
+	// image_urls / video_urls / audio_urls 在 omni_reference 分支被消费成 multipart 文件，
+	// 不再以字符串字段透传，否则上游会同时收到 URL 字符串和 multipart 文件，语义重复。
 	for key, value := range req.Metadata {
 		switch key {
-		case "video_resolution", "ratio", "duration", "prompt", "model":
+		case "video_resolution", "ratio", "duration", "prompt", "model",
+			"image_urls", "video_urls", "audio_urls":
 			continue
 		}
 		if value == nil {
@@ -324,36 +327,57 @@ func (a *TaskAdaptor) BuildRequestBody(c *gin.Context, info *relaycommon.RelayIn
 	}
 
 	// JSON 提交路径下，OpenAI 标准用 input_reference / images: [url] 表达首帧/参考图。
-	// 穗禾上游只接 multipart 文件，网关在此把 URL 拉下来转成 multipart part。
-	// 字段命名按 metadata.function_mode 分流（与 suihe 文档对齐）：
+	// Koma 即梦上游只接 multipart 文件，网关在此把 URL 拉下来转成 multipart part。
+	// 字段命名按 metadata.function_mode 分流（与 Koma 即梦文档对齐）：
 	//
-	//   omni_reference   →  全部 images 都是 image_file_1, image_file_2, ...
-	//                      （全能引用：每张图都是参考素材，没有"首帧"概念）
+	//   omni_reference   →  全能参考通道。优先按 metadata.image_urls / video_urls / audio_urls
+	//                      分类生成 image_file_N / video_file_N / audio_file_N；缺失时回落
+	//                      到 images[] 当全部 image_file_N（向后兼容旧客户端）。
 	//   multi_frame      →  images[0] = first_frame, images[1..] = frame_1, frame_2, ...
 	//   first_last_frames →  images[0] = first_frame；end_frame 走 metadata.end_frame_url 透传
 	//   first_frame / 其他 →  默认：images[0] = first_frame, images[1..] = frame_1, frame_2, ...
 	//
 	// 上游对字段名的语义敏感：function_mode=omni_reference 但字段是 first_frame/frame_N，
 	// 上游会按多帧模式处理（只看 first_frame，剩下的引导帧），导致客户端"全能引用"语义丢失。
-	imageURLs := collectImageURLs(req)
-	if len(imageURLs) > 0 {
-		functionMode := stringFromMetadata(req.Metadata, "function_mode")
-		switch functionMode {
-		case "omni_reference":
-			for i, u := range imageURLs {
-				fieldName := fmt.Sprintf("image_file_%d", i+1)
-				if err := writeRemoteImageAsPart(writer, fieldName, u); err != nil {
-					return nil, errors.Wrapf(err, "fetch_%s_failed", fieldName)
-				}
+	functionMode := stringFromMetadata(req.Metadata, "function_mode")
+	if functionMode == "omni_reference" {
+		// 全能参考：客户端显式分类后按 kind 各自从 1 开始编号，与 prompt 里 @image_file_N /
+		// @video_file_N / @audio_file_N 占位符精确对位。
+		imageURLs := stringSliceFromMetadata(req.Metadata, "image_urls")
+		videoURLs := stringSliceFromMetadata(req.Metadata, "video_urls")
+		audioURLs := stringSliceFromMetadata(req.Metadata, "audio_urls")
+		// 兜底：未提供任何分类时退化到老协议（images[] 全当 image_file_N）。
+		if len(imageURLs) == 0 && len(videoURLs) == 0 && len(audioURLs) == 0 {
+			imageURLs = collectImageURLs(req)
+		}
+		for i, u := range imageURLs {
+			fieldName := fmt.Sprintf("image_file_%d", i+1)
+			if err := writeRemoteAssetAsPart(writer, fieldName, u); err != nil {
+				return nil, errors.Wrapf(err, "fetch_%s_failed", fieldName)
 			}
-		default:
-			// first_frame / multi_frame / first_last_frames / 未声明：保持原默认行为
-			if err := writeRemoteImageAsPart(writer, "first_frame", imageURLs[0]); err != nil {
+		}
+		for i, u := range videoURLs {
+			fieldName := fmt.Sprintf("video_file_%d", i+1)
+			if err := writeRemoteAssetAsPart(writer, fieldName, u); err != nil {
+				return nil, errors.Wrapf(err, "fetch_%s_failed", fieldName)
+			}
+		}
+		for i, u := range audioURLs {
+			fieldName := fmt.Sprintf("audio_file_%d", i+1)
+			if err := writeRemoteAssetAsPart(writer, fieldName, u); err != nil {
+				return nil, errors.Wrapf(err, "fetch_%s_failed", fieldName)
+			}
+		}
+	} else {
+		// first_frame / multi_frame / first_last_frames / 未声明：保持原默认行为
+		imageURLs := collectImageURLs(req)
+		if len(imageURLs) > 0 {
+			if err := writeRemoteAssetAsPart(writer, "first_frame", imageURLs[0]); err != nil {
 				return nil, errors.Wrap(err, "fetch_first_frame_failed")
 			}
 			for i, u := range imageURLs[1:] {
 				fieldName := fmt.Sprintf("frame_%d", i+1)
-				if err := writeRemoteImageAsPart(writer, fieldName, u); err != nil {
+				if err := writeRemoteAssetAsPart(writer, fieldName, u); err != nil {
 					return nil, errors.Wrapf(err, "fetch_%s_failed", fieldName)
 				}
 			}
@@ -368,7 +392,7 @@ func (a *TaskAdaptor) BuildRequestBody(c *gin.Context, info *relaycommon.RelayIn
 }
 
 // collectImageURLs 汇总 OpenAI 标准请求中的远程图片 URL（input_reference / images），
-// 调用方按顺序映射为 first_frame、frame_1、frame_2... 上传给穗禾上游。
+// 调用方按顺序映射为 first_frame、frame_1、frame_2... 上传给Koma 即梦上游。
 //
 // 仅识别 http(s) 协议；data URI 与本地文件不在此处处理（multipart 文件路径已覆盖）。
 func collectImageURLs(req relaycommon.TaskSubmitReq) []string {
@@ -396,14 +420,16 @@ func collectImageURLs(req relaycommon.TaskSubmitReq) []string {
 	return out
 }
 
-// writeRemoteImageAsPart 拉取远程图片，按 multipart part 名称写入到上游请求体。
+// writeRemoteAssetAsPart 拉取远程媒体（image / video / audio 均可），按 multipart part
+// 名称写入到上游请求体。Content-Type 由响应头或前 512 字节嗅探得出，所以同一函数能写
+// image_file_N / video_file_N / audio_file_N 任意类型，不需要按 kind 分支。
 //
 // 设计权衡：
 //   - 直接走默认 http.Client（无代理），与图床服务（七牛云 OSS 等）走公网最直接；
 //   - 加 30s 超时，避免恶意/慢速图床拖死整个上游链路；
 //   - Content-Type 优先取响应头，否则走前 512 字节嗅探；
 //   - filename 取 URL 末段，没有时回退到 fieldName + 推导后缀。
-func writeRemoteImageAsPart(writer *multipart.Writer, fieldName, imageURL string) error {
+func writeRemoteAssetAsPart(writer *multipart.Writer, fieldName, imageURL string) error {
 	httpReq, err := http.NewRequest(http.MethodGet, imageURL, nil)
 	if err != nil {
 		return errors.Wrap(err, "new_http_request_failed")
@@ -558,7 +584,7 @@ func gcd(a, b int) int {
 
 func (a *TaskAdaptor) DoRequest(c *gin.Context, info *relaycommon.RelayInfo, requestBody io.Reader) (*http.Response, error) {
 	resp, err := channel.DoTaskApiRequest(a, c, info, requestBody)
-	// 穗禾上游对异步任务提交按规范返回 202 Accepted；framework 仅以 200 视为成功，
+	// Koma 即梦上游对异步任务提交按规范返回 202 Accepted；framework 仅以 200 视为成功，
 	// 这里把 2xx 统一收敛为 200，确保 DoResponse 能解析 task_id 而不是被包成 fail_to_fetch_task。
 	if err == nil && resp != nil && resp.StatusCode >= 200 && resp.StatusCode < 300 {
 		resp.StatusCode = http.StatusOK
@@ -626,7 +652,7 @@ func (a *TaskAdaptor) GetChannelName() string {
 	return ChannelName
 }
 
-// ParseTaskResult 将穗禾上游状态映射为新 API 通用的 TaskInfo。
+// ParseTaskResult 将Koma 即梦上游状态映射为新 API 通用的 TaskInfo。
 //
 // 已知 status 枚举（与文档一致）：
 //
@@ -798,6 +824,55 @@ func stringFromMetadata(meta map[string]any, key string) string {
 		}
 	}
 	return ""
+}
+
+// stringSliceFromMetadata 从 metadata 取 []string，兼容三种 JSON 形态：
+//   - []string                       Go 内部直传
+//   - []any（[]interface{}）         encoding/json 反序列化默认形态
+//   - "url1,url2,url3" 单行字符串    便于客户端调试时手填
+//
+// 过滤空字符串与重复 URL，按出现顺序去重。
+func stringSliceFromMetadata(meta map[string]any, key string) []string {
+	if meta == nil {
+		return nil
+	}
+	raw, ok := meta[key]
+	if !ok || raw == nil {
+		return nil
+	}
+	collect := func(values []string) []string {
+		seen := make(map[string]struct{}, len(values))
+		out := make([]string, 0, len(values))
+		for _, v := range values {
+			v = strings.TrimSpace(v)
+			if v == "" {
+				continue
+			}
+			if _, dup := seen[v]; dup {
+				continue
+			}
+			seen[v] = struct{}{}
+			out = append(out, v)
+		}
+		return out
+	}
+	switch v := raw.(type) {
+	case []string:
+		return collect(v)
+	case []any:
+		acc := make([]string, 0, len(v))
+		for _, item := range v {
+			if s, ok := item.(string); ok {
+				acc = append(acc, s)
+			} else if str, ok := item.(fmt.Stringer); ok {
+				acc = append(acc, str.String())
+			}
+		}
+		return collect(acc)
+	case string:
+		return collect(strings.Split(v, ","))
+	}
+	return nil
 }
 
 func intFromMetadata(meta map[string]any, key string) int {
